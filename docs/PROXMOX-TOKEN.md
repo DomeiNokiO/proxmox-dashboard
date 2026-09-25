@@ -66,15 +66,44 @@ nano /opt/proxmox-dashboard/.env
 | `PVE_TOKEN_SECRET`  | `12345678-abcd-...`                   | baris `value` (rahasia, sekali muncul) |
 | `PVE_VERIFY_SSL`    | `false`                               | biarkan `false` bila cert self-signed |
 
-Lalu nyalakan:
+Lalu **nyalakan service** (wajib setelah mengisi `.env` pertama kali):
 
 ```bash
-systemctl restart proxmox-dashboard
-systemctl status proxmox-dashboard      # cek sudah active (running)
-journalctl -u proxmox-dashboard -n 30   # lihat log bila ada kendala
+systemctl start proxmox-dashboard        # start pertama kali
+# atau: systemctl restart proxmox-dashboard   (bila mengubah .env saat sudah jalan)
+systemctl status proxmox-dashboard --no-pager   # pastikan: active (running)
+journalctl -u proxmox-dashboard -n 30 --no-pager  # lihat log bila ada kendala
 ```
 
+> Installer meng-*enable* service (auto-start saat boot) tapi TIDAK menyalakannya otomatis bila `.env` masih template. Jadi setelah mengisi kredensial, jangan lupa `systemctl start proxmox-dashboard`.
+
 Buka dashboard di `http://<IP-CT>:<PORT>` (default port `3000`).
+
+---
+
+## Troubleshooting
+
+**Web tidak bisa diakses / `ERR_CONNECTION_REFUSED`**
+- Service belum jalan: `systemctl start proxmox-dashboard` (lihat di atas).
+- VPN di perangkatmu memblok IP LAN CT (mis. `172.x`) — matikan VPN.
+- Cek port terbuka di CT: `ss -tlnp | grep 3000` dan `curl -sS http://localhost:3000/healthz`.
+
+**Dashboard muncul tapi "Failed to fetch" / daftar VM kosong**
+Backend gagal menghubungi API Proxmox. Diagnosa dari dalam CT:
+
+```bash
+curl -sS http://localhost:3000/api/guests ; echo          # baca pesan error-nya
+source /opt/proxmox-dashboard/.env
+curl -sk -H "Authorization: PVEAPI...RET}" \
+  https://${PVE_HOST}:${PVE_PORT:-8006}/api2/json/version ; echo
+```
+
+- `{"data":{"version":...}}` → token & jaringan OK. Cek `PVE_NODE` cocok dengan `hostname` node Proxmox.
+- `401 authentication failure` → Token ID/secret salah, atau role belum ter-assign ke **token** (`pveum aclmod / -user automation@pve -role Automational`, dan token dibuat `--privsep 0`).
+- `Connection refused`/timeout → CT tak bisa mencapai Proxmox. Cek `PVE_HOST` benar & `ping $PVE_HOST` dari CT.
+- `SSL certificate problem` → set `PVE_VERIFY_SSL=false` di `.env` lalu restart.
+
+Setelah memperbaiki `.env`: `systemctl restart proxmox-dashboard`.
 
 ---
 

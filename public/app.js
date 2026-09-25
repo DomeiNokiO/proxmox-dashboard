@@ -282,7 +282,7 @@ async function createVMModal() {
         ${field('Disk (GB)', `<input id="v_disk" type="number" value="20" min="1" class="${inputCls}">`)}
         ${field('Storage', `<select id="v_storage" class="${inputCls}">${stores.map((s) => `<option value="${esc(s.storage)}">${esc(s.storage)}</option>`).join('')}</select>`)}
       </div>
-      ${field('Bridge', `<input id="v_bridge" value="${meta?.defaults?.bridge || 'vmbr0'}" class="${inputCls}">`)}
+      ${field('Bridge', `<input id="v_bridge" value="${esc(meta?.defaults?.bridge || 'vmbr0')}" class="${inputCls}">`)}
       ${field('ISO (opsional, mis. local:iso/ubuntu.iso)', `<input id="v_iso" placeholder="kosongkan bila pakai template" class="${inputCls}">`)}
       <label class="flex items-center gap-2 mb-4 text-sm"><input id="v_start" type="checkbox" class="accent-orange-500"> Start setelah dibuat</label>
       <button id="v_submit" class="w-full bg-orange-600 hover:bg-orange-500 rounded-md py-2.5 text-sm font-medium">Buat VM</button>
@@ -332,7 +332,7 @@ async function createCTModal() {
         ${field('IP (dhcp / CIDR)', `<input id="c_ip" value="dhcp" class="${inputCls}">`)}
         ${field('Gateway', `<input id="c_gw" placeholder="192.168.1.1" class="${inputCls}">`)}
       </div>
-      ${field('Bridge', `<input id="c_bridge" value="${meta?.defaults?.bridge || 'vmbr0'}" class="${inputCls}">`)}
+      ${field('Bridge', `<input id="c_bridge" value="${esc(meta?.defaults?.bridge || 'vmbr0')}" class="${inputCls}">`)}
       <div class="flex gap-4 mb-4 text-sm">
         <label class="flex items-center gap-2"><input id="c_unpriv" type="checkbox" checked class="accent-sky-500"> Unprivileged</label>
         <label class="flex items-center gap-2"><input id="c_nest" type="checkbox" checked class="accent-sky-500"> Nesting</label>

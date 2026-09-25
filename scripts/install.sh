@@ -11,6 +11,10 @@
 # ============================================================
 set -Eeuo pipefail
 
+# Locale aman: cegah warning perl/apt di image minimal tanpa en_US.UTF-8.
+# C.UTF-8 selalu tersedia di Debian/Ubuntu.
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
+
 APP_USER="pvedash"
 APP_DIR="/opt/proxmox-dashboard"
 NODE_MAJOR="20"

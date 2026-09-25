@@ -87,6 +87,7 @@ info "Memasang dependensi & dashboard di dalam CT…"
 pct exec "$CTID" -- bash -c "
   set -Eeuo pipefail
   export DEBIAN_FRONTEND=noninteractive
+  export LC_ALL=C.UTF-8 LANG=C.UTF-8
   apt-get update -qq
   apt-get install -y -qq curl git ca-certificates gnupg openssl >/dev/null
   rm -rf /opt/proxmox-dashboard

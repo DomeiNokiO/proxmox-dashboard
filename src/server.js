@@ -3,6 +3,7 @@ import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
 import https from 'node:https';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.js';
@@ -12,13 +13,42 @@ import { buildRouter } from './routes.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pve = new ProxmoxClient(config.proxmox);
 
+// Perbandingan token tahan-timing (cegah timing attack tebak token dashboard)
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 const app = express();
-app.use(express.json());
+app.disable('x-powered-by'); // jangan bocorkan "Express"
+app.use(express.json({ limit: '256kb' })); // batasi ukuran body (anti-DoS payload besar)
+
+// Security headers dasar (tanpa dependency tambahan)
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY'); // cegah clickjacking
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  // CSP: pertahanan berlapis atas XSS. Izinkan CDN yg dipakai (Tailwind, Chart.js, noVNC).
+  // 'unsafe-inline' diperlukan Tailwind CDN + atribut style; script dibatasi ke self + jsdelivr/cdn.tailwindcss.
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' https://cdn.jsdelivr.net https://cdn.tailwindcss.com 'unsafe-inline'",
+    "style-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self' ws: wss:",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "object-src 'none'",
+  ].join('; '));
+  next();
+});
 
 function authGuard(req, res, next) {
   if (!config.auth.token) return next();
   const provided = req.headers['x-auth-token'] || req.query.token;
-  if (provided === config.auth.token) return next();
+  if (safeEqual(provided, config.auth.token)) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
@@ -31,7 +61,7 @@ const server = http.createServer(app);
 function checkWsAuth(req) {
   if (!config.auth.token) return true;
   const url = new URL(req.url, 'http://localhost');
-  return url.searchParams.get('token') === config.auth.token;
+  return safeEqual(url.searchParams.get('token'), config.auth.token);
 }
 
 // ===== WS #1: broadcast status realtime =====

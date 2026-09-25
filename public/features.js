@@ -8,7 +8,7 @@ async function openHistory(vmid, name) {
   modal(`
     <div class="p-5">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold text-lg">Histori #${vmid} <span class="text-xs text-slate-500">${name || ''}</span></h2>
+        <h2 class="font-semibold text-lg">Histori #${vmid} <span class="text-xs text-slate-500">${esc(name) || ''}</span></h2>
         <select id="h_tf" class="bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-sm">
           <option value="hour">1 Jam</option><option value="day">1 Hari</option>
           <option value="week">1 Minggu</option><option value="month">1 Bulan</option>
@@ -47,7 +47,7 @@ function renderChart(canvasId, label, labels, values, color) {
 
 // ---------- 2. Snapshot ----------
 async function openSnapshots(vmid, name) {
-  modal(`<div class="p-5"><h2 class="font-semibold text-lg mb-4">Snapshot #${vmid} <span class="text-xs text-slate-500">${name || ''}</span></h2>
+  modal(`<div class="p-5"><h2 class="font-semibold text-lg mb-4">Snapshot #${vmid} <span class="text-xs text-slate-500">${esc(name) || ''}</span></h2>
     <div class="flex gap-2 mb-4">
       <input id="s_name" placeholder="nama-snapshot" class="${inputCls} flex-1">
       <button id="s_create" class="px-4 bg-emerald-600 hover:bg-emerald-500 rounded-md text-sm">Buat</button>
@@ -60,13 +60,13 @@ async function openSnapshots(vmid, name) {
       const snaps = (await api(`/guests/${vmid}/snapshots`)).filter((s) => s.name !== 'current');
       $('#s_list').innerHTML = snaps.length ? snaps.map((s) => `
         <div class="flex items-center justify-between bg-slate-800 rounded-md px-3 py-2">
-          <div><div class="font-medium">${s.name}</div>
-          <div class="text-xs text-slate-500">${s.snaptime ? new Date(s.snaptime * 1000).toLocaleString('id-ID') : ''} ${s.description ? '· ' + s.description : ''}</div></div>
+          <div><div class="font-medium">${esc(s.name)}</div>
+          <div class="text-xs text-slate-500">${s.snaptime ? new Date(s.snaptime * 1000).toLocaleString('id-ID') : ''} ${s.description ? '· ' + esc(s.description) : ''}</div></div>
           <div class="flex gap-1">
-            <button data-snaproll="${s.name}" class="px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-700 text-xs">Rollback</button>
-            <button data-snapdel="${s.name}" class="px-2 py-1 rounded bg-red-800/60 hover:bg-red-800 text-xs">Hapus</button>
+            <button data-snaproll="${esc(s.name)}" class="px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-700 text-xs">Rollback</button>
+            <button data-snapdel="${esc(s.name)}" class="px-2 py-1 rounded bg-red-800/60 hover:bg-red-800 text-xs">Hapus</button>
           </div></div>`).join('') : '<p class="text-slate-500">Belum ada snapshot.</p>';
-    } catch (e) { $('#s_list').innerHTML = `<p class="text-red-400">${e.message}</p>`; }
+    } catch (e) { $('#s_list').innerHTML = `<p class="text-red-400">${esc(e.message)}</p>`; }
   };
   $('#s_create').onclick = async () => {
     const snapname = $('#s_name').value.trim();
@@ -91,17 +91,17 @@ async function openSnapshots(vmid, name) {
 async function openBackup(vmid, name) {
   let storages = []; let backups = [];
   try { [storages, backups] = await Promise.all([api(`/backup-storages`), api(`/guests/${vmid}/backups`)]); } catch (e) { return toast(e.message, 'err'); }
-  modal(`<div class="p-5"><h2 class="font-semibold text-lg mb-4">Backup #${vmid} <span class="text-xs text-slate-500">${name || ''}</span></h2>
+  modal(`<div class="p-5"><h2 class="font-semibold text-lg mb-4">Backup #${vmid} <span class="text-xs text-slate-500">${esc(name) || ''}</span></h2>
     <div class="flex gap-2 mb-2">
-      <select id="b_storage" class="${inputCls} flex-1">${storages.map((s) => `<option value="${s.storage}">${s.storage} (${fmtBytes(s.avail)} free)</option>`).join('') || '<option value="">(tak ada storage backup)</option>'}</select>
+      <select id="b_storage" class="${inputCls} flex-1">${storages.map((s) => `<option value="${esc(s.storage)}">${esc(s.storage)} (${fmtBytes(s.avail)} free)</option>`).join('') || '<option value="">(tak ada storage backup)</option>'}</select>
       <select id="b_mode" class="${inputCls} w-32"><option value="snapshot">snapshot</option><option value="suspend">suspend</option><option value="stop">stop</option></select>
       <button id="b_run" class="px-4 bg-violet-600 hover:bg-violet-500 rounded-md text-sm">Backup</button>
     </div>
     <p class="text-xs text-slate-500 mb-4">Backup berjalan di background (bisa beberapa menit).</p>
     <h3 class="text-sm font-medium mb-2">Backup tersedia</h3>
     <div class="space-y-2 max-h-56 overflow-y-auto text-sm">${backups.length ? backups.map((b) => `
-      <div class="bg-slate-800 rounded-md px-3 py-2"><div class="font-mono text-xs truncate">${(b.volid || '').split('/').pop()}</div>
-      <div class="text-xs text-slate-500">${b.ctime ? new Date(b.ctime * 1000).toLocaleString('id-ID') : ''} · ${fmtBytes(b.size)} · ${b.storage}</div></div>`).join('') : '<p class="text-slate-500">Belum ada backup.</p>'}</div>
+      <div class="bg-slate-800 rounded-md px-3 py-2"><div class="font-mono text-xs truncate">${esc((b.volid || '').split('/').pop())}</div>
+      <div class="text-xs text-slate-500">${b.ctime ? new Date(b.ctime * 1000).toLocaleString('id-ID') : ''} · ${fmtBytes(b.size)} · ${esc(b.storage)}</div></div>`).join('') : '<p class="text-slate-500">Belum ada backup.</p>'}</div>
     <button onclick="closeModal()" class="w-full mt-4 text-sm text-slate-400 hover:text-white">Tutup</button></div>`);
   $('#b_run').onclick = async () => {
     const storage = $('#b_storage').value;
@@ -117,9 +117,9 @@ async function openMigrate(vmid, name, curNode) {
   let nodes = [];
   try { nodes = (await api('/meta')).nodes || []; } catch { /* */ }
   const targets = nodes.filter((n) => n !== curNode);
-  modal(`<div class="p-5"><h2 class="font-semibold text-lg mb-4">Migrasi #${vmid} <span class="text-xs text-slate-500">${name || ''}</span></h2>
-    <p class="text-xs text-slate-400 mb-3">Dari node <b>${curNode || '?'}</b> ke:</p>
-    <select id="m_target" class="${inputCls} mb-3">${targets.map((n) => `<option value="${n}">${n}</option>`).join('') || '<option value="">(tak ada node lain)</option>'}</select>
+  modal(`<div class="p-5"><h2 class="font-semibold text-lg mb-4">Migrasi #${vmid} <span class="text-xs text-slate-500">${esc(name) || ''}</span></h2>
+    <p class="text-xs text-slate-400 mb-3">Dari node <b>${esc(curNode) || '?'}</b> ke:</p>
+    <select id="m_target" class="${inputCls} mb-3">${targets.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('') || '<option value="">(tak ada node lain)</option>'}</select>
     <label class="flex items-center gap-2 mb-2 text-sm"><input id="m_online" type="checkbox" checked class="accent-orange-500"> Online/live (VM) atau restart (CT)</label>
     <label class="flex items-center gap-2 mb-4 text-sm"><input id="m_localdisk" type="checkbox" class="accent-orange-500"> Sertakan local disk (VM)</label>
     <button id="m_run" ${targets.length ? '' : 'disabled'} class="w-full bg-orange-600 hover:bg-orange-500 rounded-md py-2.5 text-sm font-medium disabled:opacity-40">Migrasi</button>
@@ -137,7 +137,7 @@ async function openMigrate(vmid, name, curNode) {
 async function openConsole(vmid, name) {
   modal(`<div class="p-3">
     <div class="flex items-center justify-between mb-2 px-2">
-      <h2 class="font-semibold">Console #${vmid} <span class="text-xs text-slate-500">${name || ''}</span></h2>
+      <h2 class="font-semibold">Console #${vmid} <span class="text-xs text-slate-500">${esc(name) || ''}</span></h2>
       <div class="flex gap-2 items-center">
         <span id="vnc_state" class="text-xs text-slate-400">menghubungkan…</span>
         <button onclick="closeModal()" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">Tutup</button>

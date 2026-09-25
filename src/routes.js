@@ -13,6 +13,7 @@ export function buildRouter(pve) {
 
   // Resolusi node + type asli guest dari cluster (dukung multi-node)
   async function resolveGuest(vmid) {
+    if (!/^\d+$/.test(String(vmid))) throw Object.assign(new Error('VMID harus angka'), { status: 400 });
     const res = await pve.clusterResources();
     const hit = res.find((g) => String(g.vmid) === String(vmid) && g.type !== 'storage');
     if (!hit) throw new Error(`VMID ${vmid} tidak ditemukan di cluster`);
@@ -123,15 +124,20 @@ export function buildRouter(pve) {
     res.json({ ok: true, upid });
     return undefined;
   }));
+  const SNAPNAME_RE = /^[A-Za-z][\w-]{0,39}$/;
   r.post('/guests/:vmid/snapshots/:name/rollback', h(async (req, res) => {
+    if (!SNAPNAME_RE.test(req.params.name)) return res.status(400).json({ error: 'Nama snapshot tidak valid' });
     const { node, type } = await resolveGuest(req.params.vmid);
     const upid = await pve.rollbackSnapshot(node, type, req.params.vmid, req.params.name);
     res.json({ ok: true, upid });
+    return undefined;
   }));
   r.delete('/guests/:vmid/snapshots/:name', h(async (req, res) => {
+    if (!SNAPNAME_RE.test(req.params.name)) return res.status(400).json({ error: 'Nama snapshot tidak valid' });
     const { node, type } = await resolveGuest(req.params.vmid);
     const upid = await pve.deleteSnapshot(node, type, req.params.vmid, req.params.name);
     res.json({ ok: true, upid });
+    return undefined;
   }));
 
   // ===== Backup =====
@@ -167,6 +173,8 @@ export function buildRouter(pve) {
   r.post('/guests/:vmid/migrate', h(async (req, res) => {
     const { target, online = true, withLocalDisks = false, restart = true } = req.body;
     if (!target) return res.status(400).json({ error: 'Butuh node target' });
+    const nodeList = (await pve.nodes()).map((n) => n.node);
+    if (!nodeList.includes(target)) return res.status(400).json({ error: 'Node target tidak dikenal' });
     const { node, type } = await resolveGuest(req.params.vmid);
     if (node === target) return res.status(400).json({ error: 'Guest sudah di node target' });
     const upid = await pve.migrate(node, type, req.params.vmid, target, { online, withLocalDisks, restart });

@@ -9,6 +9,12 @@ const state = { guests: [], nodeStatus: null, nodeStatuses: {}, nodes: [], filte
 
 // ---------- Util ----------
 const $ = (s) => document.querySelector(s);
+// Escape HTML — WAJIB untuk semua data dari Proxmox (nama VM/CT, snapshot, dsb)
+// sebelum masuk ke innerHTML. Mencegah XSS via nama guest berisi markup.
+const esc = (s) => String(s == null ? '' : s)
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+window.esc = esc;
 const fmtBytes = (b) => {
   if (b == null) return '-';
   const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -112,7 +118,7 @@ function renderNodeFilter() {
   const wrap = $('#nodeFilterWrap');
   if (state.nodes.length <= 1) { wrap.classList.add('hidden'); return; }
   wrap.classList.remove('hidden');
-  const btn = (val, label, online) => `<button data-nodefilter="${val}" class="px-3 py-1 rounded-md ${state.nodeFilter === val ? 'active bg-orange-600' : 'bg-slate-800 hover:bg-slate-700'}">${label}${online === false ? ' <span class="text-red-400">●</span>' : ''}</button>`;
+  const btn = (val, label, online) => `<button data-nodefilter="${esc(val)}" class="px-3 py-1 rounded-md ${state.nodeFilter === val ? 'active bg-orange-600' : 'bg-slate-800 hover:bg-slate-700'}">${esc(label)}${online === false ? ' <span class="text-red-400">●</span>' : ''}</button>`;
   $('#nodeFilter').innerHTML = btn('all', 'Semua node')
     + state.nodes.map((n) => btn(n.node, n.node, n.status === 'online')).join('');
 }
@@ -142,7 +148,7 @@ function renderGuests() {
         <div class="min-w-0">
           <div class="flex items-center gap-2">
             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${typeColor}">${g.type === 'qemu' ? 'VM' : 'CT'}</span>
-            <span class="font-semibold truncate">${g.name || '(tanpa nama)'}</span>
+            <span class="font-semibold truncate">${esc(g.name) || '(tanpa nama)'}</span>
           </div>
           <div class="text-xs text-slate-500 mt-0.5">#${g.vmid} · ${fmtUptime(g.uptime)}</div>
         </div>
@@ -166,14 +172,14 @@ function renderGuests() {
              <button data-act="stop" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-red-800/60 hover:bg-red-800 text-xs">Stop</button>`
           : `<button data-act="start" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-emerald-700/70 hover:bg-emerald-700 text-xs">Start</button>`}
         <button data-edit="${g.vmid}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">⚙ Resource</button>
-        <button data-del="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-red-900 text-xs ml-auto">🗑</button>
+        <button data-del="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-red-900 text-xs ml-auto">🗑</button>
       </div>
       <div class="mt-1.5 flex flex-wrap gap-1.5 border-t border-slate-800 pt-2">
-        ${run && g.type === 'qemu' ? `<button data-console="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
-        <button data-hist="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
-        <button data-snap="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
-        <button data-backup="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
-        <button data-migrate="${g.vmid}" data-name="${g.name}" data-node="${g.node}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
+        ${run && g.type === 'qemu' ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
+        <button data-hist="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
+        <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
+        <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
+        <button data-migrate="${g.vmid}" data-name="${esc(g.name)}" data-node="${g.node}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
       </div>
     </div>`;
   }).join('');
@@ -274,7 +280,7 @@ async function createVMModal() {
       </div>
       <div class="grid grid-cols-2 gap-3">
         ${field('Disk (GB)', `<input id="v_disk" type="number" value="20" min="1" class="${inputCls}">`)}
-        ${field('Storage', `<select id="v_storage" class="${inputCls}">${stores.map((s) => `<option value="${s.storage}">${s.storage}</option>`).join('')}</select>`)}
+        ${field('Storage', `<select id="v_storage" class="${inputCls}">${stores.map((s) => `<option value="${esc(s.storage)}">${esc(s.storage)}</option>`).join('')}</select>`)}
       </div>
       ${field('Bridge', `<input id="v_bridge" value="${meta?.defaults?.bridge || 'vmbr0'}" class="${inputCls}">`)}
       ${field('ISO (opsional, mis. local:iso/ubuntu.iso)', `<input id="v_iso" placeholder="kosongkan bila pakai template" class="${inputCls}">`)}
@@ -311,7 +317,7 @@ async function createCTModal() {
       <h2 class="font-semibold text-lg mb-4 text-sky-400">Buat Container (LXC)</h2>
       ${field('VMID', `<input id="c_vmid" type="number" value="${nextid}" class="${inputCls}">`)}
       ${field('Hostname', `<input id="c_host" placeholder="app-ct" class="${inputCls}">`)}
-      ${field('Template OS', `<select id="c_tmpl" class="${inputCls}">${tmpls.length ? tmpls.map((t) => `<option value="${t.volid}">${t.volid.split('/').pop()}</option>`).join('') : `<option value="">(unduh template dulu di Proxmox)</option>`}</select>`)}
+      ${field('Template OS', `<select id="c_tmpl" class="${inputCls}">${tmpls.length ? tmpls.map((t) => `<option value="${esc(t.volid)}">${esc(t.volid.split('/').pop())}</option>`).join('') : `<option value="">(unduh template dulu di Proxmox)</option>`}</select>`)}
       <div class="grid grid-cols-2 gap-3">
         ${field('vCPU', `<input id="c_cores" type="number" value="2" min="1" class="${inputCls}">`)}
         ${field('RAM (MB)', `<input id="c_mem" type="number" value="2048" step="256" class="${inputCls}">`)}

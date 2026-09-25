@@ -9,6 +9,7 @@
     tailwind.config = { darkMode: 'class' };
   </script>
   <link rel="stylesheet" href="/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
   <!-- Header -->
@@ -51,6 +52,11 @@
     <span id="lastUpdate" class="text-xs text-slate-500 ml-auto"></span>
   </section>
 
+  <!-- Node filter (muncul bila >1 node) -->
+  <section id="nodeFilterWrap" class="max-w-7xl mx-auto px-4 pt-3 hidden">
+    <div id="nodeFilter" class="flex flex-wrap gap-1 text-sm"></div>
+  </section>
+
   <!-- Guest grid -->
   <main class="max-w-7xl mx-auto px-4 py-5">
     <div id="guestGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
@@ -63,6 +69,7 @@
   <!-- Modal container -->
   <div id="modalRoot"></div>
 
+  <script src="/features.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

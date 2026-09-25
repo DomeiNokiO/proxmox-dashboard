@@ -1,9 +1,10 @@
-// src/server.js — Express + WebSocket, broadcast status guest realtime
+// src/server.js — Express + WebSocket (status realtime + VNC proxy), multi-node
 import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
+import https from 'node:https';
 import { fileURLToPath } from 'node:url';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.js';
 import { ProxmoxClient } from './proxmox.js';
 import { buildRouter } from './routes.js';
@@ -14,7 +15,6 @@ const pve = new ProxmoxClient(config.proxmox);
 const app = express();
 app.use(express.json());
 
-// --- Auth middleware sederhana (opsional, aktif bila DASHBOARD_TOKEN diset) ---
 function authGuard(req, res, next) {
   if (!config.auth.token) return next();
   const provided = req.headers['x-auth-token'] || req.query.token;
@@ -22,19 +22,11 @@ function authGuard(req, res, next) {
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
-// API routes (dilindungi)
 app.use('/api', authGuard, buildRouter(pve));
-
-// Healthcheck (tanpa auth)
 app.get('/healthz', (_req, res) => res.json({ ok: true, ts: Date.now() }));
-
-// Static frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 const server = http.createServer(app);
-
-// --- WebSocket: broadcast daftar guest + status node tiap pollInterval ---
-const wss = new WebSocketServer({ server, path: '/ws' });
 
 function checkWsAuth(req) {
   if (!config.auth.token) return true;
@@ -42,51 +34,92 @@ function checkWsAuth(req) {
   return url.searchParams.get('token') === config.auth.token;
 }
 
-wss.on('connection', (ws, req) => {
-  if (!checkWsAuth(req)) {
-    ws.close(4401, 'Unauthorized');
-    return;
-  }
+// ===== WS #1: broadcast status realtime =====
+const statusWss = new WebSocketServer({ noServer: true });
+statusWss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
-  // Kirim snapshot terakhir langsung saat connect
   if (lastSnapshot) ws.send(JSON.stringify({ type: 'snapshot', data: lastSnapshot }));
 });
-
-// Heartbeat: tutup koneksi mati
 setInterval(() => {
-  wss.clients.forEach((ws) => {
+  statusWss.clients.forEach((ws) => {
     if (ws.isAlive === false) return ws.terminate();
-    ws.isAlive = false;
-    ws.ping();
-    return undefined;
+    ws.isAlive = false; ws.ping(); return undefined;
   });
 }, 30000);
 
-let lastSnapshot = null;
+// ===== WS #2: proxy VNC ke Proxmox =====
+const vncWss = new WebSocketServer({ noServer: true });
+vncWss.on('connection', async (client, req) => {
+  const url = new URL(req.url, 'http://localhost');
+  const vmid = url.searchParams.get('vmid');
+  const port = url.searchParams.get('port');
+  const vncticket = url.searchParams.get('vncticket');
+  try {
+    const res = await pve.clusterResources();
+    const g = res.find((x) => String(x.vmid) === String(vmid) && x.type !== 'storage');
+    if (!g) throw new Error('guest tidak ditemukan');
+    const { node, type } = g;
+    if (!port || !vncticket) throw new Error('port/vncticket wajib (ambil dari /api/guests/:vmid/vncticket)');
+    const target = pve.vncWebsocketURL(node, type, vmid, port, vncticket);
+    // Sambungkan ke Proxmox (binary), bawa header auth token
+    const upstream = new WebSocket(target, {
+      agent: new https.Agent({ rejectUnauthorized: config.proxmox.verifySSL }),
+      headers: { Authorization: pve.authHeader },
+    });
+    upstream.binaryType = 'nodebuffer';
+    client.binaryType = 'nodebuffer';
+    const closeAll = () => { try { client.close(); } catch {} try { upstream.close(); } catch {} };
+    upstream.on('open', () => client.send(JSON.stringify({ __proxy: 'ready' })));
+    upstream.on('message', (d) => client.readyState === client.OPEN && client.send(d));
+    client.on('message', (d) => upstream.readyState === upstream.OPEN && upstream.send(d));
+    upstream.on('close', closeAll);
+    client.on('close', closeAll);
+    upstream.on('error', (e) => { client.send(JSON.stringify({ __proxy: 'error', message: e.message })); closeAll(); });
+    client.on('error', closeAll);
+  } catch (e) {
+    client.send(JSON.stringify({ __proxy: 'error', message: e.message }));
+    client.close();
+  }
+});
 
+// Routing upgrade berdasarkan path
+server.on('upgrade', (req, socket, head) => {
+  const { pathname } = new URL(req.url, 'http://localhost');
+  if (!checkWsAuth(req)) { socket.destroy(); return; }
+  if (pathname === '/ws') {
+    statusWss.handleUpgrade(req, socket, head, (ws) => statusWss.emit('connection', ws, req));
+  } else if (pathname === '/vncws') {
+    vncWss.handleUpgrade(req, socket, head, (ws) => vncWss.emit('connection', ws, req));
+  } else {
+    socket.destroy();
+  }
+});
+
+let lastSnapshot = null;
 function broadcast(obj) {
   const msg = JSON.stringify(obj);
-  wss.clients.forEach((ws) => {
-    if (ws.readyState === ws.OPEN) ws.send(msg);
-  });
+  statusWss.clients.forEach((ws) => { if (ws.readyState === ws.OPEN) ws.send(msg); });
 }
 
 async function pollLoop() {
   try {
-    const [guests, nodeStatus] = await Promise.all([
-      pve.clusterResources(),
-      pve.nodeStatus(config.proxmox.node).catch(() => null),
-    ]);
+    const [guests, nodes] = await Promise.all([pve.clusterResources(), pve.nodes()]);
+    // Status semua node (multi-node)
+    const nodeStatuses = {};
+    await Promise.all((nodes || []).map(async (n) => {
+      try { nodeStatuses[n.node] = await pve.nodeStatus(n.node); } catch { nodeStatuses[n.node] = null; }
+    }));
     lastSnapshot = {
       ts: Date.now(),
       node: config.proxmox.node,
-      nodeStatus,
-      guests: guests.map((g) => ({
-        vmid: g.vmid, name: g.name, type: g.type, status: g.status,
-        node: g.node, cpu: g.cpu, maxcpu: g.maxcpu, mem: g.mem,
-        maxmem: g.maxmem, disk: g.disk, maxdisk: g.maxdisk,
-        uptime: g.uptime, template: g.template,
+      nodes: (nodes || []).map((n) => ({ node: n.node, status: n.status })),
+      nodeStatuses,
+      nodeStatus: nodeStatuses[config.proxmox.node] || null, // kompat lama
+      guests: guests.filter((g) => g.type !== 'storage').map((g) => ({
+        vmid: g.vmid, name: g.name, type: g.type, status: g.status, node: g.node,
+        cpu: g.cpu, maxcpu: g.maxcpu, mem: g.mem, maxmem: g.maxmem,
+        disk: g.disk, maxdisk: g.maxdisk, uptime: g.uptime, template: g.template,
       })),
     };
     broadcast({ type: 'snapshot', data: lastSnapshot });

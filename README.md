@@ -13,6 +13,12 @@ Backend **Node.js + Express + WebSocket**, frontend **Vanilla JS + Tailwind (zer
 - **Kontrol penuh** — start, shutdown, reboot, reset, stop, hapus (dengan konfirmasi ganda).
 - **Ubah resource on-the-fly** — tambah/kurangi vCPU & RAM, perbesar disk (`+GB`).
 - **Monitor node** — CPU, RAM, root FS, uptime, load average.
+- **Multi-node** — deteksi semua node cluster otomatis, filter guest per node, aksi memakai node asli tiap guest.
+- **Grafik histori** — CPU, RAM, jaringan & disk I/O dari data RRD Proxmox (rentang jam/hari/minggu/bulan/tahun), digambar dengan Chart.js.
+- **Snapshot** — lihat, buat (opsi sertakan RAM/vmstate), rollback, dan hapus snapshot.
+- **Backup** — jalankan vzdump ke storage pilihan (mode snapshot/suspend/stop, kompresi zstd/gzip/lzo).
+- **Migrasi** — pindahkan guest antar node (online/offline) langsung dari UI.
+- **Console VNC** — akses layar VM interaktif via noVNC, di-proxy aman lewat server (ticket tak bocor ke Proxmox langsung).
 - **Filter & cari** — per tipe (VM/CT), status (running/stopped), atau nama/VMID.
 - **Aman** — token API Proxmox (bukan password), opsi proteksi token dashboard, systemd hardening.
 

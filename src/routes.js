@@ -1,69 +1,69 @@
-// src/routes.js — REST API endpoints untuk dashboard
+// src/routes.js — REST API endpoints untuk dashboard (multi-node)
 import express from 'express';
 import { config } from './config.js';
 
 export function buildRouter(pve) {
   const r = express.Router();
-  const NODE = config.proxmox.node;
+  const DEFAULT_NODE = config.proxmox.node;
 
-  // Wrapper async agar error tertangkap
   const h = (fn) => (req, res) => fn(req, res).catch((e) => {
     console.error('[API ERROR]', e.message);
     res.status(e.status || 500).json({ error: e.message });
   });
 
+  // Resolusi node + type asli guest dari cluster (dukung multi-node)
+  async function resolveGuest(vmid) {
+    const res = await pve.clusterResources();
+    const hit = res.find((g) => String(g.vmid) === String(vmid) && g.type !== 'storage');
+    if (!hit) throw new Error(`VMID ${vmid} tidak ditemukan di cluster`);
+    return { node: hit.node, type: hit.type };
+  }
+
   // --- Info cluster / node ---
   r.get('/info', h(async (_req, res) => {
     const [version, nodes] = await Promise.all([pve.version(), pve.nodes()]);
-    res.json({ version, nodes, node: NODE });
+    res.json({ version, nodes, node: DEFAULT_NODE });
   }));
 
-  r.get('/node-status', h(async (_req, res) => {
-    res.json(await pve.nodeStatus(NODE));
+  r.get('/nodes', h(async (_req, res) => {
+    res.json(await pve.nodes());
   }));
 
-  // --- Daftar semua VM & CT ---
+  r.get('/node-status/:node?', h(async (req, res) => {
+    res.json(await pve.nodeStatus(req.params.node || DEFAULT_NODE));
+  }));
+
+  // --- Daftar semua VM & CT (semua node) ---
   r.get('/guests', h(async (_req, res) => {
     const list = await pve.clusterResources();
     res.json(list.map((g) => ({
-      vmid: g.vmid,
-      name: g.name,
-      type: g.type,
-      status: g.status,
-      node: g.node,
-      cpu: g.cpu,
-      maxcpu: g.maxcpu,
-      mem: g.mem,
-      maxmem: g.maxmem,
-      disk: g.disk,
-      maxdisk: g.maxdisk,
-      uptime: g.uptime,
-      template: g.template,
+      vmid: g.vmid, name: g.name, type: g.type, status: g.status, node: g.node,
+      cpu: g.cpu, maxcpu: g.maxcpu, mem: g.mem, maxmem: g.maxmem,
+      disk: g.disk, maxdisk: g.maxdisk, uptime: g.uptime, template: g.template,
     })));
   }));
 
   // --- Detail satu guest ---
   r.get('/guests/:vmid', h(async (req, res) => {
     const { vmid } = req.params;
-    const type = await pve.detectType(NODE, vmid);
+    const { node, type } = await resolveGuest(vmid);
     const [status, cfg] = await Promise.all([
-      pve.currentStatus(NODE, type, vmid),
-      pve.config(NODE, type, vmid),
+      pve.currentStatus(node, type, vmid),
+      pve.config(node, type, vmid),
     ]);
-    res.json({ vmid, type, status, config: cfg });
+    res.json({ vmid, node, type, status, config: cfg });
   }));
 
-  // --- Aksi lifecycle: start/stop/shutdown/reboot/reset/suspend/resume ---
+  // --- Aksi lifecycle ---
   const ALLOWED = new Set(['start', 'stop', 'shutdown', 'reboot', 'reset', 'suspend', 'resume']);
   r.post('/guests/:vmid/action/:act', h(async (req, res) => {
     const { vmid, act } = req.params;
     if (!ALLOWED.has(act)) return res.status(400).json({ error: `Aksi tidak valid: ${act}` });
-    const type = await pve.detectType(NODE, vmid);
-    // reset/suspend/resume hanya untuk qemu
+    const { node, type } = await resolveGuest(vmid);
     if (['reset', 'suspend', 'resume'].includes(act) && type !== 'qemu') {
       return res.status(400).json({ error: `Aksi ${act} hanya untuk VM (qemu)` });
     }
-    const upid = await pve.action(NODE, type, vmid, act);
+    const upid = await pve.action(node, type, vmid, act);
     res.json({ ok: true, upid });
     return undefined;
   }));
@@ -71,133 +71,189 @@ export function buildRouter(pve) {
   // --- Ubah CPU / RAM ---
   r.put('/guests/:vmid/resources', h(async (req, res) => {
     const { vmid } = req.params;
-    const { cores, memory } = req.body; // memory dalam MB
-    const type = await pve.detectType(NODE, vmid);
+    const { cores, memory } = req.body;
+    const { node, type } = await resolveGuest(vmid);
     const cfg = {};
     if (cores != null) cfg.cores = parseInt(cores, 10);
     if (memory != null) cfg.memory = parseInt(memory, 10);
     if (Object.keys(cfg).length === 0) {
       return res.status(400).json({ error: 'Butuh cores dan/atau memory' });
     }
-    await pve.setConfig(NODE, type, vmid, cfg);
+    await pve.setConfig(node, type, vmid, cfg);
     res.json({ ok: true, applied: cfg });
     return undefined;
   }));
 
-  // --- Tambah disk (resize) ---
+  // --- Tambah disk ---
   r.put('/guests/:vmid/disk', h(async (req, res) => {
     const { vmid } = req.params;
-    const { disk, size } = req.body; // disk mis. 'scsi0'/'rootfs', size mis. '+10G'
+    const { disk, size } = req.body;
     if (!disk || !size) return res.status(400).json({ error: 'Butuh disk & size (mis. +10G)' });
-    const type = await pve.detectType(NODE, vmid);
-    await pve.resize(NODE, type, vmid, disk, size);
+    const { node, type } = await resolveGuest(vmid);
+    await pve.resize(node, type, vmid, disk, size);
     res.json({ ok: true });
     return undefined;
   }));
 
-  // --- Hapus guest (auto-stop bila running) ---
+  // --- Hapus guest ---
   r.delete('/guests/:vmid', h(async (req, res) => {
     const { vmid } = req.params;
-    const type = await pve.detectType(NODE, vmid);
-    const st = await pve.currentStatus(NODE, type, vmid);
+    const { node, type } = await resolveGuest(vmid);
+    const st = await pve.currentStatus(node, type, vmid);
     if (st.status === 'running') {
-      const stopUpid = await pve.action(NODE, type, vmid, 'stop');
-      await pve.waitTask(NODE, stopUpid);
+      await pve.waitTask(node, await pve.action(node, type, vmid, 'stop'));
     }
-    const upid = await pve.destroy(NODE, type, vmid, true);
+    const upid = await pve.destroy(node, type, vmid, true);
     res.json({ ok: true, upid });
   }));
 
-  // --- Data pendukung untuk form create ---
-  r.get('/meta', h(async (_req, res) => {
-    const [storages, nextid] = await Promise.all([pve.storages(NODE), pve.nextId()]);
+  // ===== Snapshot =====
+  r.get('/guests/:vmid/snapshots', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    res.json(await pve.listSnapshots(node, type, req.params.vmid));
+  }));
+  r.post('/guests/:vmid/snapshots', h(async (req, res) => {
+    const { snapname, description, vmstate } = req.body;
+    if (!snapname) return res.status(400).json({ error: 'Butuh snapname' });
+    if (!/^[A-Za-z][\w-]{0,39}$/.test(snapname)) {
+      return res.status(400).json({ error: 'snapname: huruf/angka/-/_ , mulai huruf, maks 40' });
+    }
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const upid = await pve.createSnapshot(node, type, req.params.vmid, { snapname, description, vmstate });
+    res.json({ ok: true, upid });
+    return undefined;
+  }));
+  r.post('/guests/:vmid/snapshots/:name/rollback', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const upid = await pve.rollbackSnapshot(node, type, req.params.vmid, req.params.name);
+    res.json({ ok: true, upid });
+  }));
+  r.delete('/guests/:vmid/snapshots/:name', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const upid = await pve.deleteSnapshot(node, type, req.params.vmid, req.params.name);
+    res.json({ ok: true, upid });
+  }));
+
+  // ===== Backup =====
+  r.get('/backup-storages/:node?', h(async (req, res) => {
+    const node = req.params.node || DEFAULT_NODE;
+    const st = await pve.storages(node);
+    res.json(st.filter((s) => (s.content || '').includes('backup'))
+      .map((s) => ({ storage: s.storage, avail: s.avail, total: s.total })));
+  }));
+  r.get('/guests/:vmid/backups', h(async (req, res) => {
+    const { node } = await resolveGuest(req.params.vmid);
+    const storages = (await pve.storages(node)).filter((s) => (s.content || '').includes('backup'));
+    const all = [];
+    for (const s of storages) {
+      try {
+        const items = await pve.listBackups(node, s.storage);
+        items.filter((b) => String(b.vmid) === String(req.params.vmid))
+          .forEach((b) => all.push({ ...b, storage: s.storage }));
+      } catch { /* skip */ }
+    }
+    res.json(all.sort((a, b) => (b.ctime || 0) - (a.ctime || 0)));
+  }));
+  r.post('/guests/:vmid/backup', h(async (req, res) => {
+    const { storage, mode = 'snapshot', compress = 'zstd' } = req.body;
+    if (!storage) return res.status(400).json({ error: 'Butuh storage tujuan backup' });
+    const { node } = await resolveGuest(req.params.vmid);
+    const upid = await pve.backup(node, { vmid: req.params.vmid, storage, mode, compress, notes: '{{guestname}}' });
+    res.json({ ok: true, upid });
+    return undefined;
+  }));
+
+  // ===== Migrasi antar node =====
+  r.post('/guests/:vmid/migrate', h(async (req, res) => {
+    const { target, online = true, withLocalDisks = false, restart = true } = req.body;
+    if (!target) return res.status(400).json({ error: 'Butuh node target' });
+    const { node, type } = await resolveGuest(req.params.vmid);
+    if (node === target) return res.status(400).json({ error: 'Guest sudah di node target' });
+    const upid = await pve.migrate(node, type, req.params.vmid, target, { online, withLocalDisks, restart });
+    res.json({ ok: true, upid, from: node, to: target });
+    return undefined;
+  }));
+
+  // ===== Grafik histori (RRD) =====
+  r.get('/guests/:vmid/rrd', h(async (req, res) => {
+    const tf = req.query.timeframe || 'hour';
+    const { node, type } = await resolveGuest(req.params.vmid);
+    res.json(await pve.rrdData(node, type, req.params.vmid, tf));
+  }));
+  r.get('/node-rrd/:node?', h(async (req, res) => {
+    const tf = req.query.timeframe || 'hour';
+    res.json(await pve.nodeRrdData(req.params.node || DEFAULT_NODE, tf));
+  }));
+
+  // ===== Data pendukung form create =====
+  r.get('/meta', h(async (req, res) => {
+    const node = req.query.node || DEFAULT_NODE;
+    const [storages, nextid, nodes] = await Promise.all([
+      pve.storages(node), pve.nextId(), pve.nodes(),
+    ]);
     let templates = [];
-    try {
-      templates = await pve.templates(NODE, config.defaults.ctTemplateStorage);
-    } catch { /* storage template mungkin beda */ }
+    try { templates = await pve.templates(node, config.defaults.ctTemplateStorage); } catch { /* */ }
     res.json({
-      storages: storages.map((s) => ({
-        storage: s.storage, type: s.type, content: s.content,
-        avail: s.avail, total: s.total,
-      })),
+      storages: storages.map((s) => ({ storage: s.storage, type: s.type, content: s.content, avail: s.avail, total: s.total })),
       templates: templates.map((t) => ({ volid: t.volid, size: t.size })),
-      nextid,
-      defaults: config.defaults,
+      nodes: nodes.map((n) => n.node),
+      nextid, defaults: config.defaults,
     });
   }));
 
-  // --- Create VM (QEMU) ---
+  // ===== Create VM =====
   r.post('/vms', h(async (req, res) => {
     const {
-      vmid, name, cores = 2, memory = 2048, diskSize = 20,
+      node = DEFAULT_NODE, vmid, name, cores = 2, memory = 2048, diskSize = 20,
       storage = config.defaults.storage, bridge = config.defaults.bridge,
       isoImage, ostype = 'l26', start = false,
     } = req.body;
     if (!vmid || !name) return res.status(400).json({ error: 'Butuh vmid & name' });
-
     const cfg = {
-      vmid: parseInt(vmid, 10),
-      name,
-      cores: parseInt(cores, 10),
-      memory: parseInt(memory, 10),
-      net0: `virtio,bridge=${bridge}`,
-      scsihw: 'virtio-scsi-pci',
-      scsi0: `${storage}:${parseInt(diskSize, 10)}`,
-      ostype,
-      agent: 'enabled=1',
+      vmid: parseInt(vmid, 10), name, cores: parseInt(cores, 10), memory: parseInt(memory, 10),
+      net0: `virtio,bridge=${bridge}`, scsihw: 'virtio-scsi-pci',
+      scsi0: `${storage}:${parseInt(diskSize, 10)}`, ostype, agent: 'enabled=1',
     };
-    if (isoImage) {
-      cfg.ide2 = `${isoImage},media=cdrom`;
-      cfg.boot = 'order=scsi0;ide2';
-    }
-    const upid = await pve.createVM(NODE, cfg);
-    await pve.waitTask(NODE, upid);
-    if (start) {
-      const s = await pve.action(NODE, 'qemu', vmid, 'start');
-      await pve.waitTask(NODE, s);
-    }
+    if (isoImage) { cfg.ide2 = `${isoImage},media=cdrom`; cfg.boot = 'order=scsi0;ide2'; }
+    const upid = await pve.createVM(node, cfg);
+    await pve.waitTask(node, upid);
+    if (start) await pve.waitTask(node, await pve.action(node, 'qemu', vmid, 'start'));
     res.json({ ok: true, vmid: cfg.vmid, upid });
     return undefined;
   }));
 
-  // --- Create Container (LXC) ---
+  // ===== VNC ticket (untuk noVNC RFB credentials) =====
+  r.get('/guests/:vmid/vncticket', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const vnc = await pve.vncProxy(node, type, req.params.vmid);
+    // ticket dipakai browser sbg password RFB; port dipakai server saat proxy
+    res.json({ ticket: vnc.ticket, port: vnc.port, node, type });
+    return undefined;
+  }));
+
+  // ===== Create CT =====
   r.post('/cts', h(async (req, res) => {
     const {
-      vmid, hostname, cores = 2, memory = 2048, diskSize = 8,
+      node = DEFAULT_NODE, vmid, hostname, cores = 2, memory = 2048, diskSize = 8,
       storage = config.defaults.storage, bridge = config.defaults.bridge,
       ostemplate = config.defaults.ctTemplate,
-      password, sshKey, ip = 'dhcp', gw, unprivileged = true, nesting = true,
-      start = false,
+      password, sshKey, ip = 'dhcp', gw, unprivileged = true, nesting = true, start = false,
     } = req.body;
     if (!vmid || !hostname) return res.status(400).json({ error: 'Butuh vmid & hostname' });
     if (!ostemplate) return res.status(400).json({ error: 'Butuh ostemplate (pilih dari /meta)' });
-    if (!password && !sshKey) {
-      return res.status(400).json({ error: 'Butuh password atau sshKey' });
-    }
-
+    if (!password && !sshKey) return res.status(400).json({ error: 'Butuh password atau sshKey' });
     let netStr = `name=eth0,bridge=${bridge},ip=${ip}`;
     if (ip !== 'dhcp' && gw) netStr += `,gw=${gw}`;
-
     const cfg = {
-      vmid: parseInt(vmid, 10),
-      hostname,
-      cores: parseInt(cores, 10),
-      memory: parseInt(memory, 10),
-      rootfs: `${storage}:${parseInt(diskSize, 10)}`,
-      ostemplate,
-      net0: netStr,
-      unprivileged: unprivileged ? 1 : 0,
-      features: nesting ? 'nesting=1' : undefined,
+      vmid: parseInt(vmid, 10), hostname, cores: parseInt(cores, 10), memory: parseInt(memory, 10),
+      rootfs: `${storage}:${parseInt(diskSize, 10)}`, ostemplate, net0: netStr,
+      unprivileged: unprivileged ? 1 : 0, features: nesting ? 'nesting=1' : undefined,
     };
     if (password) cfg.password = password;
     if (sshKey) cfg['ssh-public-keys'] = sshKey;
-
-    const upid = await pve.createCT(NODE, cfg);
-    await pve.waitTask(NODE, upid);
-    if (start) {
-      const s = await pve.action(NODE, 'lxc', vmid, 'start');
-      await pve.waitTask(NODE, s);
-    }
+    const upid = await pve.createCT(node, cfg);
+    await pve.waitTask(node, upid);
+    if (start) await pve.waitTask(node, await pve.action(node, 'lxc', vmid, 'start'));
     res.json({ ok: true, vmid: cfg.vmid, upid });
     return undefined;
   }));

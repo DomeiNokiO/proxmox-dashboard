@@ -52,6 +52,40 @@ Base: `/api`. Bila `DASHBOARD_TOKEN` diset, sertakan header `X-Auth-Token: <toke
 
 Butuh salah satu dari `password` atau `sshKey`.
 
+## Snapshot
+
+| Method | Endpoint | Body | Keterangan |
+|---|---|---|---|
+| GET | `/api/guests/:vmid/snapshots` | — | Daftar snapshot |
+| POST | `/api/guests/:vmid/snapshots` | `{snapname, description?, vmstate?}` | Buat snapshot (`vmstate:true` sertakan RAM) |
+| POST | `/api/guests/:vmid/snapshots/:name/rollback` | — | Rollback ke snapshot |
+| DELETE | `/api/guests/:vmid/snapshots/:name` | — | Hapus snapshot |
+
+## Backup
+
+| Method | Endpoint | Body | Keterangan |
+|---|---|---|---|
+| POST | `/api/guests/:vmid/backup` | `{storage, mode?, compress?}` | vzdump; `mode`: snapshot/suspend/stop, `compress`: zstd/gzip/lzo |
+
+## Migrasi
+
+| Method | Endpoint | Body | Keterangan |
+|---|---|---|---|
+| POST | `/api/guests/:vmid/migrate` | `{target, online?}` | Pindah ke node `target` (online untuk guest running) |
+
+## Histori (RRD)
+
+| Method | Endpoint | Query | Keterangan |
+|---|---|---|---|
+| GET | `/api/guests/:vmid/rrddata` | `?timeframe=hour\|day\|week\|month\|year` | Seri waktu CPU, RAM, net, disk I/O |
+
+## Console VNC
+
+| Method | Endpoint | Keterangan |
+|---|---|---|
+| GET | `/api/guests/:vmid/vncticket` | Ambil `{ticket, port}` untuk handshake noVNC |
+| WS | `/vncws?vmid=&port=&vncticket=` | Proxy biner ke `vncwebsocket` Proxmox (auth token via `?token=`) |
+
 ## WebSocket
 
 `ws://<host>/ws` (tambah `?token=<DASHBOARD_TOKEN>` bila auth aktif).

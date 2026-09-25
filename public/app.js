@@ -5,7 +5,7 @@
 const TOKEN = localStorage.getItem('pve_dash_token') || '';
 const authHeaders = TOKEN ? { 'X-Auth-Token': TOKEN } : {};
 
-const state = { guests: [], nodeStatus: null, filter: 'all', search: '', meta: null };
+const state = { guests: [], nodeStatus: null, nodeStatuses: {}, nodes: [], filter: 'all', nodeFilter: 'all', search: '', meta: null };
 
 // ---------- Util ----------
 const $ = (s) => document.querySelector(s);
@@ -56,8 +56,13 @@ function connectWS() {
     if (msg.type === 'snapshot') {
       state.guests = msg.data.guests || [];
       state.nodeStatus = msg.data.nodeStatus;
-      $('#nodeLabel').textContent = `node: ${msg.data.node}`;
+      state.nodeStatuses = msg.data.nodeStatuses || {};
+      state.nodes = msg.data.nodes || [];
+      $('#nodeLabel').textContent = state.nodes.length > 1
+        ? `${state.nodes.length} node · ${state.nodes.filter((n) => n.status === 'online').length} online`
+        : `node: ${msg.data.node}`;
       $('#lastUpdate').textContent = `diperbarui ${new Date(msg.data.ts).toLocaleTimeString('id-ID')}`;
+      renderNodeFilter();
       renderNodeStats();
       renderGuests();
     } else if (msg.type === 'error') {
@@ -102,9 +107,20 @@ function statusBadge(s) {
   return `<span class="px-2 py-0.5 rounded text-xs ${map[s] || 'bg-slate-700'}">${s}</span>`;
 }
 
+// Node filter bar (multi-node)
+function renderNodeFilter() {
+  const wrap = $('#nodeFilterWrap');
+  if (state.nodes.length <= 1) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  const btn = (val, label, online) => `<button data-nodefilter="${val}" class="px-3 py-1 rounded-md ${state.nodeFilter === val ? 'active bg-orange-600' : 'bg-slate-800 hover:bg-slate-700'}">${label}${online === false ? ' <span class="text-red-400">●</span>' : ''}</button>`;
+  $('#nodeFilter').innerHTML = btn('all', 'Semua node')
+    + state.nodes.map((n) => btn(n.node, n.node, n.status === 'online')).join('');
+}
+
 function renderGuests() {
   const grid = $('#guestGrid');
   let list = state.guests.filter((g) => !g.template);
+  if (state.nodeFilter && state.nodeFilter !== 'all') list = list.filter((g) => g.node === state.nodeFilter);
   if (state.filter === 'qemu' || state.filter === 'lxc') list = list.filter((g) => g.type === state.filter);
   if (state.filter === 'running' || state.filter === 'stopped') list = list.filter((g) => g.status === state.filter);
   if (state.search) {
@@ -152,6 +168,13 @@ function renderGuests() {
         <button data-edit="${g.vmid}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">⚙ Resource</button>
         <button data-del="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-red-900 text-xs ml-auto">🗑</button>
       </div>
+      <div class="mt-1.5 flex flex-wrap gap-1.5 border-t border-slate-800 pt-2">
+        ${run && g.type === 'qemu' ? `<button data-console="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
+        <button data-hist="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
+        <button data-snap="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
+        <button data-backup="${g.vmid}" data-name="${g.name}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
+        <button data-migrate="${g.vmid}" data-name="${g.name}" data-node="${g.node}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -175,15 +198,16 @@ async function doDelete(vmid, name) {
 }
 
 // ---------- Modal ----------
-function modal(html) {
+function modal(html, maxW = 'max-w-md') {
   $('#modalRoot').innerHTML = `
     <div class="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4" id="modalBg">
-      <div class="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="bg-slate-900 border border-slate-700 rounded-xl w-full ${maxW} max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
         ${html}
       </div>
     </div>`;
   $('#modalBg').onclick = closeModal;
 }
+window.modal = modal;
 function closeModal() { $('#modalRoot').innerHTML = ''; }
 window.closeModal = closeModal;
 
@@ -334,11 +358,21 @@ async function createCTModal() {
 document.addEventListener('click', (e) => {
   const t = e.target.closest('button');
   if (!t) return;
-  if (t.dataset.act) doAction(t.dataset.id, t.dataset.act);
-  else if (t.dataset.edit) editResource(t.dataset.edit);
-  else if (t.dataset.del) doDelete(t.dataset.del, t.dataset.name);
-  else if (t.dataset.filter) {
-    state.filter = t.dataset.filter;
+  const d = t.dataset;
+  if (d.act) doAction(d.id, d.act);
+  else if (d.edit) editResource(d.edit);
+  else if (d.del) doDelete(d.del, d.name);
+  else if (d.hist) Features.openHistory(d.hist, d.name);
+  else if (d.snap) Features.openSnapshots(d.snap, d.name);
+  else if (d.backup) Features.openBackup(d.backup, d.name);
+  else if (d.migrate) Features.openMigrate(d.migrate, d.name, d.node);
+  else if (d.console) Features.openConsole(d.console, d.name);
+  else if (d.nodefilter != null) {
+    state.nodeFilter = d.nodefilter;
+    document.querySelectorAll('#nodeFilter button').forEach((b) => b.classList.toggle('active', b === t));
+    renderGuests();
+  } else if (d.filter) {
+    state.filter = d.filter;
     document.querySelectorAll('.filter-btn').forEach((b) => b.classList.toggle('active', b === t));
     renderGuests();
   }

@@ -127,4 +127,66 @@ export class ProxmoxClient {
   taskLog(node, upid) {
     return this.get(`/nodes/${node}/tasks/${encodeURIComponent(upid)}/log`);
   }
+
+  // ===== Snapshot =====
+  listSnapshots(node, type, vmid) {
+    return this.get(`/nodes/${node}/${type}/${vmid}/snapshot`);
+  }
+  createSnapshot(node, type, vmid, { snapname, description = '', vmstate = 0 }) {
+    const body = { snapname, description };
+    if (type === 'qemu') body.vmstate = vmstate ? 1 : 0;
+    return this.post(`/nodes/${node}/${type}/${vmid}/snapshot`, body);
+  }
+  rollbackSnapshot(node, type, vmid, snapname) {
+    return this.post(`/nodes/${node}/${type}/${vmid}/snapshot/${snapname}/rollback`);
+  }
+  deleteSnapshot(node, type, vmid, snapname) {
+    return this.del(`/nodes/${node}/${type}/${vmid}/snapshot/${snapname}`);
+  }
+
+  // ===== Backup (vzdump) & restore =====
+  backup(node, { vmid, storage, mode = 'snapshot', compress = 'zstd', notes }) {
+    const body = { vmid, storage, mode, compress };
+    if (notes) body['notes-template'] = notes;
+    return this.post(`/nodes/${node}/vzdump`, body);
+  }
+  // Daftar file backup di storage (content=backup)
+  listBackups(node, storage) {
+    return this.get(`/nodes/${node}/storage/${storage}/content?content=backup`);
+  }
+
+  // ===== Migrasi antar node =====
+  migrate(node, type, vmid, target, { online = false, withLocalDisks = false, restart = false } = {}) {
+    const body = { target };
+    if (type === 'qemu') {
+      if (online) body.online = 1;
+      if (withLocalDisks) body['with-local-disks'] = 1;
+    } else if (restart) {
+      body.restart = 1;
+    }
+    return this.post(`/nodes/${node}/${type}/${vmid}/migrate`, body);
+  }
+  migratePreconditions(node, vmid) {
+    return this.get(`/nodes/${node}/qemu/${vmid}/migrate`);
+  }
+
+  // ===== Grafik histori (RRD data) =====
+  // timeframe: hour|day|week|month|year ; cf: AVERAGE|MAX
+  rrdData(node, type, vmid, timeframe = 'hour', cf = 'AVERAGE') {
+    return this.get(`/nodes/${node}/${type}/${vmid}/rrddata?timeframe=${timeframe}&cf=${cf}`);
+  }
+  nodeRrdData(node, timeframe = 'hour', cf = 'AVERAGE') {
+    return this.get(`/nodes/${node}/rrddata?timeframe=${timeframe}&cf=${cf}`);
+  }
+
+  // ===== VNC console =====
+  // Untuk QEMU: /vncproxy dgn websocket=1 ; LXC: /vncproxy (termproxy juga ada)
+  vncProxy(node, type, vmid) {
+    return this.post(`/nodes/${node}/${type}/${vmid}/vncproxy`, { websocket: 1 });
+  }
+  // Buka koneksi WS mentah ke Proxmox vncwebsocket (dipakai server sbg proxy)
+  vncWebsocketURL(node, type, vmid, port, vncticket) {
+    const base = this.base.replace('/api2/json', '').replace('https://', 'wss://');
+    return `${base}/api2/json/nodes/${node}/${type}/${vmid}/vncwebsocket?port=${port}&vncticket=${encodeURIComponent(vncticket)}`;
+  }
 }

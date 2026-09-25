@@ -16,31 +16,50 @@ export class ProxmoxClient {
     this.agent = new https.Agent({ rejectUnauthorized: verifySSL });
   }
 
-  async _req(method, path, body) {
-    const opts = {
-      method,
-      headers: { Authorization: this.authHeader },
-      agent: this.agent,
-    };
-    if (body) {
-      opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-      opts.body = new URLSearchParams(body).toString();
-    }
-    const res = await fetch(this.base + path, opts);
-    const text = await res.text();
-    let json;
-    try {
-      json = text ? JSON.parse(text) : {};
-    } catch {
-      throw new Error(`Respons non-JSON dari Proxmox (${res.status}): ${text.slice(0, 200)}`);
-    }
-    if (!res.ok) {
-      const msg = json?.errors ? JSON.stringify(json.errors) : text;
-      const err = new Error(`Proxmox ${res.status} ${method} ${path}: ${msg}`);
-      err.status = res.status;
-      throw err;
-    }
-    return json.data;
+  _req(method, path, body) {
+    return new Promise((resolve, reject) => {
+      const url = new URL(this.base + path);
+      const headers = { Authorization: this.authHeader };
+      let payload;
+      if (body) {
+        payload = new URLSearchParams(body).toString();
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        headers['Content-Length'] = Buffer.byteLength(payload);
+      }
+      const req = https.request(
+        {
+          hostname: url.hostname,
+          port: url.port || 8006,
+          path: url.pathname + url.search,
+          method,
+          headers,
+          agent: this.agent, // https.Agent menghormati rejectUnauthorized (self-signed cert)
+        },
+        (res) => {
+          let text = '';
+          res.on('data', (c) => { text += c; });
+          res.on('end', () => {
+            let json;
+            try {
+              json = text ? JSON.parse(text) : {};
+            } catch {
+              return reject(new Error(`Respons non-JSON dari Proxmox (${res.statusCode}): ${text.slice(0, 200)}`));
+            }
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+              const msg = json?.errors ? JSON.stringify(json.errors) : (text || `HTTP ${res.statusCode}`);
+              const err = new Error(`Proxmox ${res.statusCode} ${method} ${path}: ${msg}`);
+              err.status = res.statusCode;
+              return reject(err);
+            }
+            return resolve(json.data);
+          });
+        },
+      );
+      req.on('error', (e) => reject(new Error(`Koneksi ke Proxmox gagal: ${e.message}`)));
+      req.setTimeout(15000, () => req.destroy(new Error('Timeout menghubungi Proxmox (15s)')));
+      if (payload) req.write(payload);
+      req.end();
+    });
   }
 
   get(p) { return this._req('GET', p); }

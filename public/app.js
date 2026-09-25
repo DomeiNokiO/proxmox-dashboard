@@ -138,7 +138,7 @@ function renderGuests() {
   $('#emptyState').classList.toggle('hidden', list.length > 0);
   grid.innerHTML = list.map((g) => {
     const run = g.status === 'running';
-    const cpuP = pct(g.cpu, 1) * (g.maxcpu || 1) / (g.maxcpu || 1) * 100;
+    const cpuP = pct(g.cpu, 1);
     const memP = pct(g.mem, g.maxmem);
     const diskP = pct(g.disk, g.maxdisk);
     const typeColor = g.type === 'qemu' ? 'text-orange-400 bg-orange-500/10' : 'text-sky-400 bg-sky-500/10';

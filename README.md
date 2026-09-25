@@ -28,19 +28,17 @@ Backend **Node.js + Express + WebSocket**, frontend **Vanilla JS + Tailwind (zer
 
 ### Opsi A — Otomatis penuh dari host Proxmox (paling mudah)
 
-Membuat LXC Ubuntu 24.04 **dan** memasang dashboard di dalamnya dengan satu perintah. Jalankan **di host Proxmox** (shell node):
+Membuat LXC Ubuntu 24.04 **dan** memasang dashboard di dalamnya dengan satu perintah. Jalankan **di host Proxmox** (shell node) — tinggal tempel, sudah mengarah ke repo ini:
 
 ```bash
-REPO_URL=https://github.com/USER/proxmox-dashboard.git \
-CTID=950 IP=dhcp bash <(curl -fsSL https://raw.githubusercontent.com/USER/proxmox-dashboard/main/scripts/create-ct.sh)
+CTID=950 IP=dhcp bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/create-ct.sh)
 ```
 
 Atau dengan IP statis:
 
 ```bash
-REPO_URL=https://github.com/USER/proxmox-dashboard.git \
 CTID=950 IP=192.168.1.240/24 GW=192.168.1.1 CORES=1 MEMORY=512 DISK=4 \
-bash scripts/create-ct.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/create-ct.sh)
 ```
 
 Setelah selesai, set kredensial Proxmox:
@@ -50,10 +48,18 @@ pct exec 950 -- nano /opt/proxmox-dashboard/.env
 pct exec 950 -- systemctl restart proxmox-dashboard
 ```
 
-### Opsi B — Manual di dalam CT/VM Ubuntu 24.04 yang sudah ada
+### Opsi B — Di dalam CT/VM Ubuntu yang sudah ada (paste langsung)
+
+Satu baris, langsung pasang semua dependensi + service (jalankan sebagai root di dalam CT):
 
 ```bash
-git clone https://github.com/USER/proxmox-dashboard.git /opt/proxmox-dashboard
+bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/install.sh)
+```
+
+Atau manual:
+
+```bash
+git clone https://github.com/DomeiNokiO/proxmox-dashboard.git /opt/proxmox-dashboard
 cd /opt/proxmox-dashboard
 bash scripts/install.sh        # pasang Node.js, service, systemd
 nano .env                      # isi PVE_HOST, token, dll
@@ -63,7 +69,7 @@ systemctl start proxmox-dashboard
 ### Opsi C — Development lokal
 
 ```bash
-git clone https://github.com/USER/proxmox-dashboard.git
+git clone https://github.com/DomeiNokiO/proxmox-dashboard.git
 cd proxmox-dashboard
 npm install
 cp .env.example .env && nano .env

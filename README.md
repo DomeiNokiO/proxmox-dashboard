@@ -143,6 +143,22 @@ Lihat [docs/API.md](docs/API.md) untuk daftar endpoint REST.
 
 ---
 
+## Performa & Beban (ringan di Proxmox)
+
+Dashboard dirancang agar **nyaris tak membebani** Proxmox:
+
+- **Poll on-demand** — status di-poll HANYA saat ada browser dashboard terbuka. Tidak ada tab aktif = **0 request** ke Proxmox (bukan loop 24/7).
+- **Beban per siklus** — `GET /cluster/resources` (1) + `GET /nodes` (1) + `GET /nodes/{n}/status` per node **online** saja. Cluster 1 node = **3 request tiap `POLL_INTERVAL`** (default 5 dtk) selama dashboard dibuka. Semuanya endpoint read-only ringan yang dilayani dari pvestatd cache Proxmox — bukan query berat.
+- **Anti-overlap** — bila Proxmox lambat merespons, siklus berikutnya dilewati (tidak menumpuk request).
+- **Node offline dilewati** — tak ada call status ke node yang mati.
+- **Grafik histori** — data RRD di-fetch sekali saat modal dibuka (Proxmox sudah menyimpan RRD-nya sendiri; tak ada sampling tambahan dari dashboard).
+- **Console VNC** — koneksi biner hanya hidup selama modal console terbuka, langsung ditutup di kedua sisi saat modal ditutup.
+- **Footprint** — proses Node.js tunggal, RAM ± 50–70 MB, tanpa database. Cocok jalan di LXC kecil (1 vCPU / 512 MB).
+
+Perkiraan: dengan default 5 dtk & 1 admin memantau, beban ke Proxmox < 1 request/detik dari endpoint status ringan — dapat diabaikan. Naikkan `POLL_INTERVAL` (mis. `10000`) bila ingin lebih hemat lagi.
+
+---
+
 ## Lisensi
 
 MIT

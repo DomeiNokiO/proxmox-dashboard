@@ -38,5 +38,5 @@ export const config = {
   },
 
   // Interval broadcast status realtime (ms)
-  pollInterval: parseInt(process.env.POLL_INTERVAL || '3000', 10),
+  pollInterval: parseInt(process.env.POLL_INTERVAL || '5000', 10),
 };

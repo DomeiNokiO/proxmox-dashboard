@@ -40,6 +40,8 @@ statusWss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   if (lastSnapshot) ws.send(JSON.stringify({ type: 'snapshot', data: lastSnapshot }));
+  startPolling(); // mulai poll saat ada client pertama
+  ws.on('close', () => { if (statusWss.clients.size === 0) stopPolling(); });
 });
 setInterval(() => {
   statusWss.clients.forEach((ws) => {
@@ -97,17 +99,22 @@ server.on('upgrade', (req, socket, head) => {
 });
 
 let lastSnapshot = null;
+let pollTimer = null;
+let polling = false; // guard anti-overlap: cegah request menumpuk bila Proxmox lambat
+
 function broadcast(obj) {
   const msg = JSON.stringify(obj);
   statusWss.clients.forEach((ws) => { if (ws.readyState === ws.OPEN) ws.send(msg); });
 }
 
 async function pollLoop() {
+  if (polling) return; // siklus sebelumnya belum selesai — lewati, jangan menumpuk
+  polling = true;
   try {
     const [guests, nodes] = await Promise.all([pve.clusterResources(), pve.nodes()]);
-    // Status semua node (multi-node)
+    // Status hanya untuk node online (multi-node) — hemat call ke node mati
     const nodeStatuses = {};
-    await Promise.all((nodes || []).map(async (n) => {
+    await Promise.all((nodes || []).filter((n) => n.status === 'online').map(async (n) => {
       try { nodeStatuses[n.node] = await pve.nodeStatus(n.node); } catch { nodeStatuses[n.node] = null; }
     }));
     lastSnapshot = {
@@ -125,7 +132,23 @@ async function pollLoop() {
     broadcast({ type: 'snapshot', data: lastSnapshot });
   } catch (e) {
     broadcast({ type: 'error', message: e.message });
+  } finally {
+    polling = false;
   }
+}
+
+// Poll HANYA saat ada client dashboard terbuka → Proxmox nol beban saat idle.
+function startPolling() {
+  if (pollTimer) return;
+  pollLoop();
+  pollTimer = setInterval(pollLoop, config.pollInterval);
+  console.log(`[poll] mulai (client aktif, interval ${config.pollInterval}ms)`);
+}
+function stopPolling() {
+  if (!pollTimer) return;
+  clearInterval(pollTimer);
+  pollTimer = null;
+  console.log('[poll] berhenti (tak ada client)');
 }
 
 server.listen(config.port, config.bindAddress, async () => {
@@ -138,6 +161,5 @@ server.listen(config.port, config.bindAddress, async () => {
   } catch (e) {
     console.error(`[PERINGATAN] Gagal konek Proxmox: ${e.message}\n`);
   }
-  pollLoop();
-  setInterval(pollLoop, config.pollInterval);
+  // Polling dimulai on-demand saat client WS pertama connect (lihat statusWss.on('connection')).
 });

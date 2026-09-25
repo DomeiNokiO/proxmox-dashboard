@@ -80,6 +80,21 @@ Buka `http://<IP>:3000`.
 
 ---
 
+## Kredensial Proxmox (API Token)
+
+Dashboard butuh **API Token** Proxmox (bukan password). Panduan lengkap cara membuatnya via CLI atau Web GUI: **[docs/PROXMOX-TOKEN.md](docs/PROXMOX-TOKEN.md)**.
+
+Ringkas (di host Proxmox):
+
+```bash
+pveum user add automation@pve
+pveum role add Automational -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Migrate VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit"
+pveum aclmod / -user automation@pve -role Automational
+pveum user token add automation@pve automate --privsep 0   # secret muncul SEKALI — catat!
+```
+
+---
+
 ## Konfigurasi (.env)
 
 | Variabel | Wajib | Keterangan |

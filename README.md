@@ -143,6 +143,18 @@ systemctl restart proxmox-dashboard
 journalctl -u proxmox-dashboard -f      # log realtime
 ```
 
+### Update ke versi terbaru (sekali paste, tanpa drama)
+
+Jalankan sebagai **root di dalam CT**:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/update.sh)
+```
+
+Script otomatis: set `safe.directory`, `git pull` **sebagai pemilik repo** (pvedash) sehingga kepemilikan file tidak rusak, pasang ulang dependency bila berubah, `chown`, lalu restart service dan tampilkan status.
+
+> Jangan `git pull` manual sebagai root — file baru jadi milik root dan service (jalan sebagai `pvedash`) bisa gagal baca. Pakai `update.sh`.
+
 ---
 
 ## Arsitektur

@@ -324,7 +324,7 @@ async function createCTModal() {
       </div>
       <div class="grid grid-cols-2 gap-3">
         ${field('Disk (GB)', `<input id="c_disk" type="number" value="8" min="1" class="${inputCls}">`)}
-        ${field('Storage', `<select id="c_storage" class="${inputCls}">${stores.map((s) => `<option value="${s.storage}">${s.storage}</option>`).join('')}</select>`)}
+        ${field('Storage', `<select id="c_storage" class="${inputCls}">${stores.map((s) => `<option value="${esc(s.storage)}">${esc(s.storage)}</option>`).join('')}</select>`)}
       </div>
       ${field('Password root', `<input id="c_pass" type="password" placeholder="min 5 karakter" class="${inputCls}">`)}
       ${field('SSH Public Key (opsional)', `<textarea id="c_ssh" rows="2" placeholder="ssh-ed25519 AAAA…" class="${inputCls}"></textarea>`)}

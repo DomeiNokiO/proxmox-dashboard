@@ -179,7 +179,7 @@ function renderGuests() {
         <button data-hist="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
         <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
         <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
-        <button data-migrate="${g.vmid}" data-name="${esc(g.name)}" data-node="${g.node}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
+        <button data-migrate="${g.vmid}" data-name="${esc(g.name)}" data-node="${esc(g.node)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
       </div>
     </div>`;
   }).join('');

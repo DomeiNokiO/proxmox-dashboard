@@ -266,5 +266,46 @@ export function buildRouter(pve) {
     return undefined;
   }));
 
+  // ===== Status task async (untuk indikator progres backup/snapshot/migrasi) =====
+  r.get('/tasks/:node/:upid/status', h(async (req, res) => {
+    const { node, upid } = req.params;
+    if (!/^[a-zA-Z0-9.-]+$/.test(node)) return res.status(400).json({ error: 'Node tidak valid' });
+    res.json(await pve.taskStatus(node, decodeURIComponent(upid)));
+    return undefined;
+  }));
+
+  // ===== IP address guest (untuk ditampilkan di kartu) =====
+  r.get('/guests/:vmid/ips', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const ips = [];
+    try {
+      if (type === 'lxc') {
+        const cfg = await pve.config(node, type, req.params.vmid);
+        // net0..netN: "name=eth0,bridge=vmbr0,ip=192.168.1.5/24,gw=..."
+        for (const k of Object.keys(cfg)) {
+          if (!/^net\d+$/.test(k)) continue;
+          const m = /(?:^|,)ip=([^,]+)/.exec(cfg[k]);
+          if (m && m[1] && m[1] !== 'dhcp' && m[1] !== 'manual') ips.push(m[1].split('/')[0]);
+        }
+      } else {
+        // QEMU: butuh guest-agent aktif
+        const data = await pve.agentInterfaces(node, req.params.vmid);
+        const list = data?.result || data?.['result'] || [];
+        for (const iface of list) {
+          if (iface.name === 'lo') continue;
+          for (const a of iface['ip-addresses'] || []) {
+            if (a['ip-address-type'] === 'ipv4' && !a['ip-address'].startsWith('127.')) {
+              ips.push(a['ip-address']);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      return res.json({ ips: [], note: type === 'qemu' ? 'guest-agent tidak aktif' : e.message });
+    }
+    res.json({ ips: [...new Set(ips)] });
+    return undefined;
+  }));
+
   return r;
 }

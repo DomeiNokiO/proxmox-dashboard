@@ -146,6 +146,15 @@ export class ProxmoxClient {
   taskLog(node, upid) {
     return this.get(`/nodes/${node}/tasks/${encodeURIComponent(upid)}/log`);
   }
+  taskStatus(node, upid) {
+    return this.get(`/nodes/${node}/tasks/${encodeURIComponent(upid)}/status`);
+  }
+
+  // --- IP address guest ---
+  // LXC: baca dari config (net0 ip=...). QEMU: via guest-agent (bila terpasang).
+  agentInterfaces(node, vmid) {
+    return this.get(`/nodes/${node}/qemu/${vmid}/agent/network-get-interfaces`);
+  }
 
   // ===== Snapshot =====
   listSnapshots(node, type, vmid) {

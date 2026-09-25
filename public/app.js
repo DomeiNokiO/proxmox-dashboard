@@ -38,6 +38,71 @@ function toast(msg, kind = 'info') {
   setTimeout(() => el.remove(), 4000);
 }
 
+// Pelacak task asinkron (backup/snapshot/migrasi): tampilkan snackbar progres yang
+// hidup sampai task selesai, lalu berubah jadi sukses/gagal. Poll ringan tiap 2s.
+async function trackTask(upid, label, onDone) {
+  if (!upid || typeof upid !== 'string' || !upid.includes(':')) {
+    toast(`${label}: dimulai`, 'ok');
+    if (onDone) onDone();
+    return;
+  }
+  // UPID format: UPID:node:....  → ambil node
+  const node = upid.split(':')[1];
+  const el = document.createElement('div');
+  el.className = 'toast bg-slate-800 text-white text-sm px-4 py-3 rounded-lg shadow-lg max-w-xs flex items-center gap-3';
+  el.innerHTML = `<span class="inline-block w-4 h-4 border-2 border-slate-500 border-t-orange-400 rounded-full animate-spin"></span>
+    <span><span class="font-medium">${esc(label)}</span><br><span class="text-xs text-slate-400" data-tstate>berjalan…</span></span>`;
+  $('#toasts').appendChild(el);
+  const setDone = (ok, txt) => {
+    el.querySelector('span').outerHTML = ok ? '<span class="text-emerald-400">✓</span>' : '<span class="text-red-400">✕</span>';
+    el.className = `toast ${ok ? 'bg-emerald-800' : 'bg-red-800'} text-white text-sm px-4 py-3 rounded-lg shadow-lg max-w-xs flex items-center gap-3`;
+    const st = el.querySelector('[data-tstate]'); if (st) st.textContent = txt;
+    setTimeout(() => el.remove(), 5000);
+  };
+  const started = Date.now();
+  const poll = async () => {
+    try {
+      const s = await api(`/tasks/${node}/${encodeURIComponent(upid)}/status`);
+      if (s.status === 'stopped') {
+        if (s.exitstatus === 'OK') { setDone(true, 'selesai'); if (onDone) onDone(); }
+        else setDone(false, `gagal: ${s.exitstatus || '?'}`);
+        return;
+      }
+    } catch (e) {
+      // task mungkin sudah lewat / tak bisa diakses — anggap selesai setelah beberapa saat
+      if (Date.now() - started > 8000) { setDone(true, 'selesai (tak terlacak)'); if (onDone) onDone(); return; }
+    }
+    if (Date.now() - started > 30 * 60 * 1000) { setDone(false, 'timeout pelacakan'); return; }
+    setTimeout(poll, 2000);
+  };
+  poll();
+}
+window.trackTask = trackTask;
+
+// Cache IP guest agar tak fetch berulang tiap render (TTL 60s)
+const ipCache = new Map();
+async function loadGuestIP(vmid, el) {
+  const c = ipCache.get(vmid);
+  if (c && Date.now() - c.ts < 60000) { renderIP(el, c.ips); return; }
+  try {
+    const r = await api(`/guests/${vmid}/ips`);
+    ipCache.set(vmid, { ips: r.ips || [], ts: Date.now() });
+    renderIP(el, r.ips || []);
+  } catch { renderIP(el, []); }
+}
+function renderIP(el, ips) {
+  if (!el) return;
+  if (ips.length) {
+    el.innerHTML = ips.slice(0, 2).map((ip) => `<span class="font-mono">${esc(ip)}</span>`).join(' ');
+    el.className = 'text-xs text-emerald-400/90 mt-0.5 cursor-pointer';
+    el.title = 'Klik untuk salin';
+    el.onclick = () => { navigator.clipboard?.writeText(ips[0]); toast(`IP ${ips[0]} disalin`, 'ok'); };
+  } else {
+    el.innerHTML = '<span class="text-slate-600">IP: -</span>';
+    el.className = 'text-xs mt-0.5';
+  }
+}
+
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
     ...opts,
@@ -151,6 +216,7 @@ function renderGuests() {
             <span class="font-semibold truncate">${esc(g.name) || '(tanpa nama)'}</span>
           </div>
           <div class="text-xs text-slate-500 mt-0.5">#${g.vmid} · ${fmtUptime(g.uptime)}</div>
+          <div class="guest-ip text-xs mt-0.5" data-ipfor="${g.vmid}">${run ? '<span class="text-slate-600">IP: …</span>' : '<span class="text-slate-600">IP: -</span>'}</div>
         </div>
         ${statusBadge(g.status)}
       </div>
@@ -175,7 +241,7 @@ function renderGuests() {
         <button data-del="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-red-900 text-xs ml-auto">🗑</button>
       </div>
       <div class="mt-1.5 flex flex-wrap gap-1.5 border-t border-slate-800 pt-2">
-        ${run && g.type === 'qemu' ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
+        ${run ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
         <button data-hist="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
         <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
         <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
@@ -183,6 +249,12 @@ function renderGuests() {
       </div>
     </div>`;
   }).join('');
+
+  // Muat IP address untuk guest yang berjalan (async, non-blocking)
+  const running = new Set(list.filter((g) => g.status === 'running').map((g) => String(g.vmid)));
+  grid.querySelectorAll('[data-ipfor]').forEach((el) => {
+    if (running.has(el.dataset.ipfor)) loadGuestIP(el.dataset.ipfor, el);
+  });
 }
 
 // ---------- Aksi lifecycle ----------

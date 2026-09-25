@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Proxmox Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 font-bold">PVE</div>
+        <div>
+          <h1 class="font-semibold leading-tight">Proxmox Dashboard</h1>
+          <p id="nodeLabel" class="text-xs text-slate-400">menghubungkan…</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="wsStatus" class="flex items-center gap-1.5 text-xs">
+          <span id="wsDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="wsText">offline</span>
+        </span>
+        <button id="btnCreateVM" class="px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-sm font-medium">+ VM</button>
+        <button id="btnCreateCT" class="px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-sm font-medium">+ CT</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Node stats -->
+  <section class="max-w-7xl mx-auto px-4 pt-5">
+    <div id="nodeStats" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+  </section>
+
+  <!-- Filter -->
+  <section class="max-w-7xl mx-auto px-4 pt-5 flex flex-wrap items-center gap-2">
+    <input id="search" placeholder="Cari nama / VMID…"
+      class="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-orange-500" />
+    <div class="flex gap-1 text-sm">
+      <button data-filter="all" class="filter-btn px-3 py-1.5 rounded-md bg-slate-800">Semua</button>
+      <button data-filter="qemu" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">VM</button>
+      <button data-filter="lxc" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">CT</button>
+      <button data-filter="running" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">Running</button>
+      <button data-filter="stopped" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">Stopped</button>
+    </div>
+    <span id="lastUpdate" class="text-xs text-slate-500 ml-auto"></span>
+  </section>
+
+  <!-- Guest grid -->
+  <main class="max-w-7xl mx-auto px-4 py-5">
+    <div id="guestGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    <p id="emptyState" class="hidden text-center text-slate-500 py-16">Tidak ada guest yang cocok.</p>
+  </main>
+
+  <!-- Toast -->
+  <div id="toasts" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2"></div>
+
+  <!-- Modal container -->
+  <div id="modalRoot"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

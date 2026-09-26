@@ -54,7 +54,7 @@ async function trackTask(upid, label, onDone) {
     <span><span class="font-medium">${esc(label)}</span><br><span class="text-xs text-slate-400" data-tstate>berjalan…</span></span>`;
   $('#toasts').appendChild(el);
   const setDone = (ok, txt) => {
-    el.querySelector('span').outerHTML = ok ? '<span class="text-emerald-400">✓</span>' : '<span class="text-red-400">✕</span>';
+    el.querySelector('span').outerHTML = ok ? '<svg class="ic ic-4 text-emerald-400"><use href="#i-check"/></svg>' : '<svg class="ic ic-4 text-red-400"><use href="#i-close"/></svg>';
     el.className = `toast ${ok ? 'bg-emerald-800' : 'bg-red-800'} text-white text-sm px-4 py-3 rounded-lg shadow-lg max-w-xs flex items-center gap-3`;
     const st = el.querySelector('[data-tstate]'); if (st) st.textContent = txt;
     setTimeout(() => el.remove(), 5000);
@@ -167,8 +167,8 @@ function renderNodeStats() {
   wrap.innerHTML = cards.map((c) => `
     <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
       <div class="flex justify-between items-baseline">
-        <span class="text-xs text-slate-400">${c.label}</span>
-        <span class="text-lg font-semibold">${c.val}</span>
+        <span class="text-xs uppercase tracking-wide text-slate-400">${c.label}</span>
+        <span class="text-lg font-semibold tnum">${c.val}</span>
       </div>
       ${c.p != null ? `<div class="mt-2 h-1.5 bg-slate-800 rounded-full overflow-hidden">
         <div class="h-full bg-${c.c}-500" style="width:${c.p}%"></div></div>` : ''}
@@ -219,38 +219,38 @@ function renderGuests() {
             <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${typeColor}">${g.type === 'qemu' ? 'VM' : 'CT'}</span>
             <span class="font-semibold truncate">${esc(g.name) || '(tanpa nama)'}</span>
           </div>
-          <div class="text-xs text-slate-500 mt-0.5">#${g.vmid} · ${fmtUptime(g.uptime)}</div>
+          <div class="text-xs text-slate-500 mt-0.5 tnum">#${g.vmid} · ${fmtUptime(g.uptime)}</div>
           <div class="guest-ip text-xs mt-0.5" data-ipfor="${g.vmid}">${run ? '<span class="text-slate-600">IP: …</span>' : '<span class="text-slate-600">IP: -</span>'}</div>
         </div>
         ${statusBadge(g.status)}
       </div>
 
       <div class="mt-3 space-y-1.5 text-xs">
-        <div class="flex justify-between text-slate-400"><span>CPU</span><span>${run ? (g.cpu * 100).toFixed(1) + '%' : '-'} · ${g.maxcpu} core</span></div>
+        <div class="flex justify-between text-slate-400"><span>CPU</span><span class="tnum">${run ? (g.cpu * 100).toFixed(1) + '%' : '-'} · ${g.maxcpu} core</span></div>
         <div class="h-1 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-orange-500" style="width:${run ? cpuP : 0}%"></div></div>
-        <div class="flex justify-between text-slate-400"><span>RAM</span><span>${fmtBytes(g.mem)} / ${fmtBytes(g.maxmem)}</span></div>
+        <div class="flex justify-between text-slate-400"><span>RAM</span><span class="tnum">${fmtBytes(g.mem)} / ${fmtBytes(g.maxmem)}</span></div>
         <div class="h-1 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-sky-500" style="width:${memP}%"></div></div>
-        <div class="flex justify-between text-slate-400"><span>Disk</span><span>${fmtBytes(g.disk)} / ${fmtBytes(g.maxdisk)}</span></div>
+        <div class="flex justify-between text-slate-400"><span>Disk</span><span class="tnum">${fmtBytes(g.disk)} / ${fmtBytes(g.maxdisk)}</span></div>
         <div class="h-1 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-violet-500" style="width:${diskP}%"></div></div>
       </div>
 
       <div class="mt-3 flex flex-wrap gap-1.5">
         ${run
-          ? `<button data-act="shutdown" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">Shutdown</button>
-             <button data-act="reboot" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">Reboot</button>
-             ${g.type === 'qemu' ? `<button data-act="reset" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-amber-700/60 hover:bg-amber-700 text-xs">Reset</button>` : ''}
-             <button data-act="stop" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-red-800/60 hover:bg-red-800 text-xs">Stop</button>`
-          : `<button data-act="start" data-id="${g.vmid}" class="act-btn px-2 py-1 rounded bg-emerald-700/70 hover:bg-emerald-700 text-xs">Start</button>`}
-        <button data-edit="${g.vmid}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">⚙ Resource</button>
-        <button data-del="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-red-900 text-xs ml-auto">🗑</button>
+          ? `<button data-act="shutdown" data-id="${g.vmid}" class="act-btn chip">Shutdown</button>
+             <button data-act="reboot" data-id="${g.vmid}" class="act-btn chip">Reboot</button>
+             ${g.type === 'qemu' ? `<button data-act="reset" data-id="${g.vmid}" class="act-btn chip chip-warn">Reset</button>` : ''}
+             <button data-act="stop" data-id="${g.vmid}" class="act-btn chip chip-danger">Stop</button>`
+          : `<button data-act="start" data-id="${g.vmid}" class="act-btn chip chip-go"><svg class="ic ic-3"><use href="#i-play"/></svg>Start</button>`}
+        <button data-edit="${g.vmid}" class="chip"><svg class="ic ic-3"><use href="#i-gear"/></svg>Resource</button>
+        <button data-del="${g.vmid}" data-name="${esc(g.name)}" class="chip chip-danger ml-auto" title="Hapus" aria-label="Hapus guest"><svg class="ic ic-3"><use href="#i-trash"/></svg></button>
       </div>
       <div class="mt-1.5 flex flex-wrap gap-1.5 border-t border-slate-800 pt-2">
-        ${run ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" data-ctype="${g.type}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
-        <button data-hist="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
-        <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
-        <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
-        <button data-migrate="${g.vmid}" data-name="${esc(g.name)}" data-node="${esc(g.node)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
-        <button data-netedit="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🌐 IP</button>
+        ${run ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" data-ctype="${g.type}" class="chip"><svg class="ic ic-3"><use href="#i-terminal"/></svg>Console</button>` : ''}
+        <button data-hist="${g.vmid}" data-name="${esc(g.name)}" class="chip"><svg class="ic ic-3"><use href="#i-chart"/></svg>Histori</button>
+        <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="chip"><svg class="ic ic-3"><use href="#i-camera"/></svg>Snapshot</button>
+        <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="chip"><svg class="ic ic-3"><use href="#i-save"/></svg>Backup</button>
+        <button data-migrate="${g.vmid}" data-name="${esc(g.name)}" data-node="${esc(g.node)}" class="chip"><svg class="ic ic-3"><use href="#i-migrate"/></svg>Migrasi</button>
+        <button data-netedit="${g.vmid}" data-name="${esc(g.name)}" class="chip"><svg class="ic ic-3"><use href="#i-globe"/></svg>IP</button>
       </div>
     </div>`;
   }).join('');
@@ -359,7 +359,7 @@ async function editNetwork(vmid, name) {
   const first = nets[0];
   modal(`
     <div class="p-5">
-      <h2 class="font-semibold text-lg mb-1">🌐 Konfigurasi IP</h2>
+      <h2 class="font-display font-semibold text-lg mb-1 flex items-center gap-2"><svg class="ic ic-5 text-slate-400"><use href="#i-globe"/></svg>Konfigurasi IP</h2>
       <p class="text-xs text-slate-500 mb-4">#${vmid} · ${esc(name || '')} <span class="uppercase">${esc(info.type)}</span></p>
       ${field('Interface', `<select id="n_iface" class="${inputCls}">${opts}</select>`)}
       <label class="flex items-center gap-2 mb-3 text-sm"><input id="n_dhcp" type="checkbox" class="accent-orange-500" ${first.ip === 'dhcp' ? 'checked' : ''}> Pakai DHCP (otomatis)</label>

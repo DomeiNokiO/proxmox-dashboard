@@ -1,15 +1,101 @@
-/* style.css — pelengkap Tailwind CDN */
-.filter-btn.active {
-  background-color: rgb(234 88 12);
-  color: white;
+/* style.css — sistem desain pelengkap Tailwind CDN (v10)
+   Pairing font: Space Grotesk (display) + IBM Plex Sans (body) + JetBrains Mono (angka/kode).
+   Token warna via CSS variable → dipakai class .btn / .field / dsb, dan di-remap tema hijau. */
+:root {
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  /* aksen: orange gelap default */
+  --accent: #ea580c;        /* orange-600  */
+  --accent-hi: #f97316;     /* orange-500  */
+  --accent-2: #0284c7;      /* sky-600     */
+  --accent-2-hi: #0ea5e9;   /* sky-500     */
+  --ring: #f97316;
 }
-@keyframes slideIn {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+
+html { font-family: var(--font-body); }
+body { font-family: var(--font-body); }
+h1, h2, h3, .font-display { font-family: var(--font-display); }
+.font-mono, .tnum, .field[type="number"] { font-variant-numeric: tabular-nums; }
+/* Angka data (CPU/RAM/uptime/VMID) rata kolom */
+.tnum { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+
+/* ---------- Ikon SVG (menggantikan semua emoji) ---------- */
+.ic { display: inline-block; vertical-align: -0.125em; flex: none; }
+.ic-3 { width: 0.75rem; height: 0.75rem; }
+.ic-4 { width: 1rem; height: 1rem; }
+.ic-5 { width: 1.25rem; height: 1.25rem; }
+.ic-6 { width: 1.5rem; height: 1.5rem; }
+
+/* ---------- Fokus keyboard: cincin jelas di SEMUA kontrol ---------- */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
-.toast { animation: slideIn 0.2s ease-out; }
+
+/* ---------- Tombol: hierarki primer / sekunder / hantu / bahaya ---------- */
+.btn {
+  border-radius: 8px; font-weight: 500; font-family: var(--font-body);
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+  cursor: pointer; line-height: 1; white-space: nowrap;
+}
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hi); }
+.btn-secondary { background: var(--accent-2); color: #fff; }
+.btn-secondary:hover { background: var(--accent-2-hi); }
+.btn-ghost { background: #1e293b; color: #cbd5e1; }
+.btn-ghost:hover { background: #334155; }
+.btn-danger { background: rgb(153 27 27 / .55); color: #fecaca; }
+.btn-danger:hover { background: #991b1b; color: #fff; }
+
+/* Chip aksi kartu — netral, ikon+label sejajar, satu tinggi (tak wrap 2 baris) */
+.chip {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .3rem .55rem; border-radius: 7px; font-size: .75rem; line-height: 1;
+  background: #1e293b; color: #cbd5e1; white-space: nowrap;
+  transition: background-color .12s ease, color .12s ease;
+}
+.chip:hover { background: #334155; color: #f1f5f9; }
+.chip-warn { background: rgb(180 83 9 / .5); color: #fde68a; }
+.chip-warn:hover { background: #b45309; color: #fff; }
+.chip-danger { background: rgb(153 27 27 / .5); color: #fecaca; }
+.chip-danger:hover { background: #991b1b; color: #fff; }
+.chip-go { background: rgb(4 120 87 / .6); color: #d1fae5; }
+.chip-go:hover { background: #047857; color: #fff; }
+
+/* ---------- Field input seragam ---------- */
+.field {
+  background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+  padding: .5rem .75rem; color: inherit; font-family: var(--font-body);
+}
+.field::placeholder { color: #64748b; }
+.field:focus { outline: none; border-color: var(--accent-hi); }
+
+/* ---------- Item menu dropdown ---------- */
+.menu-item {
+  width: 100%; text-align: left; padding: .5rem .75rem; border-radius: 8px;
+  font-size: .875rem; display: flex; align-items: center; gap: .6rem; color: #e2e8f0;
+  transition: background-color .12s ease;
+}
+.menu-item:hover { background: #1e293b; }
+.menu-item-danger { color: #fca5a5; }
+.menu-item-danger:hover { background: rgb(127 29 29 / .6); color: #fff; }
+
+/* ---------- Filter aktif ---------- */
+.filter-btn.active { background-color: var(--accent); color: #fff; }
+
+/* ---------- Motion terkendali (satu entri, hormati reduce-motion) ---------- */
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast { animation: slideIn .18s ease-out; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .toast, .spin, [class*="animate-"] { animation: none !important; }
+  * { transition-duration: .01ms !important; }
+}
+
 /* scrollbar tipis */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
@@ -17,21 +103,22 @@
 /* ============================================================
    TEMA HIJAU CERAH (opsional) — aktif saat <html data-theme="green">.
    Tanpa atribut = tema Orange GELAP default (FALLBACK, tak berubah).
-   Ini tema TERANG: latar putih, teks gelap, aksen hijau.
-   Strategi: remap utility warna (aksen orange/sky + netral slate) via
-   atribut — tanpa mengubah satu pun class di JS → minim risiko regresi.
-   Dikecualikan: bg-black (layar terminal/VNC) & text-white (toast) tetap.
+   Tema TERANG: latar putih, teks gelap, aksen hijau.
    ============================================================ */
 html[data-theme="green"] {
-  --p-400: #059669; --p-500: #10b981; --p-600: #059669;  /* primary hijau */
-  --s-400: #0d9488; --s-500: #14b8a6; --s-600: #0d9488;  /* secondary teal */
+  --accent: #059669; --accent-hi: #10b981;
+  --accent-2: #0d9488; --accent-2-hi: #14b8a6;
+  --ring: #059669;
+  --p-400: #059669; --p-500: #10b981; --p-600: #059669;
+  --s-400: #0d9488; --s-500: #14b8a6; --s-600: #0d9488;
 }
 /* --- dasar terang: body & permukaan --- */
 html[data-theme="green"] body { background-color: #f1f5f9 !important; color: #0f172a !important; }
 html[data-theme="green"] .bg-slate-950 { background-color: #f1f5f9 !important; }
 html[data-theme="green"] .bg-slate-950\/40 { background-color: rgb(226 232 240 / 0.6) !important; }
 html[data-theme="green"] .bg-slate-900 { background-color: #ffffff !important; }
-html[data-theme="green"] .bg-slate-900\/60 { background-color: rgb(255 255 255 / 0.85) !important; }
+html[data-theme="green"] .bg-slate-900\/60,
+html[data-theme="green"] .bg-slate-900\/70 { background-color: rgb(255 255 255 / 0.85) !important; }
 html[data-theme="green"] .bg-slate-800 { background-color: #e2e8f0 !important; }
 html[data-theme="green"] .bg-slate-700 { background-color: #cbd5e1 !important; }
 html[data-theme="green"] .bg-slate-600\/30 { background-color: rgb(148 163 184 / 0.25) !important; }
@@ -39,8 +126,9 @@ html[data-theme="green"] .bg-slate-500 { background-color: #94a3b8 !important; }
 /* --- hover netral --- */
 html[data-theme="green"] .hover\:bg-slate-800:hover { background-color: #e2e8f0 !important; }
 html[data-theme="green"] .hover\:bg-slate-700:hover { background-color: #cbd5e1 !important; }
-/* --- teks netral (gelap agar terbaca di latar terang) --- */
+/* --- teks netral --- */
 html[data-theme="green"] .text-slate-100 { color: #0f172a !important; }
+html[data-theme="green"] .text-slate-300 { color: #334155 !important; }
 html[data-theme="green"] .text-slate-400 { color: #475569 !important; }
 html[data-theme="green"] .text-slate-500 { color: #64748b !important; }
 html[data-theme="green"] .text-slate-600 { color: #94a3b8 !important; }
@@ -49,26 +137,29 @@ html[data-theme="green"] .hover\:text-white:hover { color: #0f172a !important; }
 html[data-theme="green"] .border-slate-800 { border-color: #e2e8f0 !important; }
 html[data-theme="green"] .border-slate-700 { border-color: #cbd5e1 !important; }
 html[data-theme="green"] .border-slate-500 { border-color: #94a3b8 !important; }
-/* --- aksen: orange->hijau, sky->teal --- */
+html[data-theme="green"] .ring-orange-500\/30 { --tw-ring-color: rgb(5 150 105 / 0.3) !important; }
+/* --- aksen orange->hijau, sky->teal (utility Tailwind yg masih dipakai kartu/badge) --- */
 html[data-theme="green"] .bg-orange-600 { background-color: var(--p-600) !important; }
 html[data-theme="green"] .bg-orange-500 { background-color: var(--p-500) !important; }
 html[data-theme="green"] .bg-sky-600 { background-color: var(--s-600) !important; }
 html[data-theme="green"] .bg-sky-500 { background-color: var(--s-500) !important; }
-html[data-theme="green"] .bg-orange-500\/10 { background-color: rgb(16 185 129 / 0.12) !important; }
+html[data-theme="green"] .bg-orange-500\/10,
+html[data-theme="green"] .bg-orange-500\/15 { background-color: rgb(16 185 129 / 0.12) !important; }
 html[data-theme="green"] .bg-orange-500\/20 { background-color: rgb(16 185 129 / 0.20) !important; }
 html[data-theme="green"] .bg-sky-500\/10 { background-color: rgb(20 184 166 / 0.12) !important; }
 html[data-theme="green"] .text-orange-400 { color: var(--p-400) !important; }
 html[data-theme="green"] .text-sky-400 { color: var(--s-400) !important; }
-html[data-theme="green"] .hover\:bg-orange-500:hover { background-color: var(--p-500) !important; }
-html[data-theme="green"] .hover\:bg-sky-500:hover { background-color: var(--s-500) !important; }
-html[data-theme="green"] .focus\:border-orange-500:focus { border-color: var(--p-500) !important; }
-html[data-theme="green"] .focus\:border-sky-500:focus { border-color: var(--s-500) !important; }
-html[data-theme="green"] .filter-btn.active { background-color: var(--p-600) !important; }
-/* scrollbar terang */
+html[data-theme="green"] .field { background: #ffffff !important; border-color: #cbd5e1 !important; }
+html[data-theme="green"] .btn-ghost { background: #e2e8f0; color: #334155; }
+html[data-theme="green"] .btn-ghost:hover { background: #cbd5e1; }
+html[data-theme="green"] .chip { background: #e2e8f0; color: #334155; }
+html[data-theme="green"] .chip:hover { background: #cbd5e1; color: #0f172a; }
+html[data-theme="green"] .menu-item { color: #1e293b; }
+html[data-theme="green"] .menu-item:hover { background: #e2e8f0; }
 html[data-theme="green"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
 
 /* ============================================================
-   Responsif mobile — rapikan header & filter di layar sempit.
+   Responsif mobile
    ============================================================ */
 @media (max-width: 640px) {
   header h1 { font-size: 0.95rem; }

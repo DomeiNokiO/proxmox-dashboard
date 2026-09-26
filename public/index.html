@@ -8,36 +8,71 @@
   <script>
     tailwind.config = { darkMode: 'class' };
   </script>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.css?v=10" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
+  <!-- Sprite ikon (Lucide, stroke currentColor) — satu set, tanpa emoji -->
+  <svg width="0" height="0" class="hidden" aria-hidden="true">
+    <defs>
+      <g id="i-base" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></g>
+    </defs>
+    <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 9l-5 5-3-3-3 3"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+    <symbol id="i-migrate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M7 16h10"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></symbol>
+    <symbol id="i-clipboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-select" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2M9 3h1M14 3h1M19 3a2 2 0 0 1 2 2M21 9v1M21 14v1M3 9v1M3 14v1M5 21a2 2 0 0 1-2-2"/><path d="M12 12l7 3-3 1-1 3-3-7z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  </svg>
+
   <!-- Header -->
-  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-20">
+  <header class="border-b border-slate-800 bg-slate-900/70 backdrop-blur sticky top-0 z-20">
     <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 font-bold">PVE</div>
-        <div>
-          <h1 class="font-semibold leading-tight">Proxmox Dashboard</h1>
-          <p id="nodeLabel" class="text-xs text-slate-400">menghubungkan…</p>
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 rounded-lg bg-orange-500/15 ring-1 ring-orange-500/30 flex items-center justify-center text-orange-400">
+          <svg class="ic ic-5"><use href="#i-terminal"/></svg>
+        </div>
+        <div class="min-w-0">
+          <h1 class="font-display font-semibold leading-tight tracking-tight">Proxmox Dashboard</h1>
+          <p id="nodeLabel" class="text-xs text-slate-400 truncate">menghubungkan…</p>
         </div>
       </div>
       <div class="flex items-center gap-2 sm:gap-3">
-        <span id="wsStatus" class="hidden sm:flex items-center gap-1.5 text-xs">
+        <span id="wsStatus" class="hidden sm:flex items-center gap-1.5 text-xs text-slate-400">
           <span id="wsDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
           <span id="wsText">offline</span>
         </span>
-        <button id="btnCreateVM" class="px-2.5 sm:px-3 py-1.5 rounded-md bg-orange-600 hover:bg-orange-500 text-sm font-medium">+ VM</button>
-        <button id="btnCreateCT" class="px-2.5 sm:px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-sm font-medium">+ CT</button>
+        <button id="btnCreateVM" class="btn btn-primary inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm"><svg class="ic ic-4"><use href="#i-plus"/></svg>VM</button>
+        <button id="btnCreateCT" class="btn btn-secondary inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-sm"><svg class="ic ic-4"><use href="#i-plus"/></svg>CT</button>
         <!-- Menu sekunder (⋮) -->
         <div class="relative">
           <button id="btnMenu" title="Menu" aria-haspopup="true" aria-expanded="false"
-            class="px-2.5 sm:px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm font-medium">⋮</button>
+            class="btn btn-ghost inline-flex items-center justify-center w-9 h-9 text-slate-300">
+            <svg class="ic ic-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="19" r="1.4" fill="currentColor"/></svg>
+          </button>
           <div id="menuDrop" class="hidden absolute right-0 mt-2 w-56 rounded-xl border border-slate-800 bg-slate-900 shadow-xl shadow-black/40 p-1.5 z-30">
-            <button id="mi_theme" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm flex items-center gap-2"><span>🎨</span><span id="mi_theme_label">Tema: Orange (Gelap)</span></button>
-            <button id="mi_node" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm flex items-center gap-2"><span>⌨</span><span>Terminal Node</span></button>
-            <button id="mi_changepw" class="hidden w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm flex items-center gap-2"><span>🔑</span><span>Ganti Password</span></button>
-            <button id="mi_logout" class="hidden w-full text-left px-3 py-2 rounded-lg hover:bg-red-900/60 text-sm flex items-center gap-2"><span>⏻</span><span>Keluar</span></button>
+            <button id="mi_theme" class="menu-item"><svg class="ic ic-4 text-slate-400"><use href="#i-palette"/></svg><span id="mi_theme_label">Tema: Orange (Gelap)</span></button>
+            <button id="mi_node" class="menu-item"><svg class="ic ic-4 text-slate-400"><use href="#i-terminal"/></svg><span>Terminal Node</span></button>
+            <button id="mi_changepw" class="menu-item hidden"><svg class="ic ic-4 text-slate-400"><use href="#i-key"/></svg><span>Ganti Password</span></button>
+            <button id="mi_logout" class="menu-item menu-item-danger hidden"><svg class="ic ic-4"><use href="#i-power"/></svg><span>Keluar</span></button>
           </div>
         </div>
       </div>
@@ -48,18 +83,20 @@
   <div id="loginOverlay" class="hidden fixed inset-0 z-[60] bg-slate-950 flex items-center justify-center p-4">
     <form id="loginForm" class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-6">
       <div class="flex items-center gap-3 mb-5">
-        <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center text-orange-400 font-bold">PVE</div>
+        <div class="w-10 h-10 rounded-lg bg-orange-500/15 ring-1 ring-orange-500/30 flex items-center justify-center text-orange-400">
+          <svg class="ic ic-6"><use href="#i-terminal"/></svg>
+        </div>
         <div>
-          <h1 class="font-semibold">Proxmox Dashboard</h1>
+          <h1 class="font-display font-semibold tracking-tight">Proxmox Dashboard</h1>
           <p class="text-xs text-slate-400">Masuk untuk melanjutkan</p>
         </div>
       </div>
       <label class="block mb-3"><span class="text-xs text-slate-400">Username</span>
-        <input id="li_user" autocomplete="username" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-orange-500" /></label>
+        <input id="li_user" autocomplete="username" class="field mt-1 w-full text-sm" /></label>
       <label class="block mb-4"><span class="text-xs text-slate-400">Password</span>
-        <input id="li_pass" type="password" autocomplete="current-password" class="mt-1 w-full bg-slate-800 border border-slate-700 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-orange-500" /></label>
+        <input id="li_pass" type="password" autocomplete="current-password" class="field mt-1 w-full text-sm" /></label>
       <p id="li_err" class="hidden text-xs text-red-400 mb-3"></p>
-      <button id="li_submit" type="submit" class="w-full bg-orange-600 hover:bg-orange-500 rounded-md py-2.5 text-sm font-medium">Masuk</button>
+      <button id="li_submit" type="submit" class="btn btn-primary w-full py-2.5 text-sm">Masuk</button>
     </form>
   </div>
 
@@ -70,8 +107,7 @@
 
   <!-- Filter -->
   <section class="max-w-7xl mx-auto px-4 pt-5 flex flex-wrap items-center gap-2">
-    <input id="search" placeholder="Cari nama / VMID…"
-      class="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-orange-500" />
+    <input id="search" placeholder="Cari nama / VMID…" class="field text-sm w-48" />
     <div class="flex gap-1 text-sm">
       <button data-filter="all" class="filter-btn px-3 py-1.5 rounded-md bg-slate-800">Semua</button>
       <button data-filter="qemu" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">VM</button>
@@ -79,7 +115,7 @@
       <button data-filter="running" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">Running</button>
       <button data-filter="stopped" class="filter-btn px-3 py-1.5 rounded-md hover:bg-slate-800">Stopped</button>
     </div>
-    <span id="lastUpdate" class="text-xs text-slate-500 ml-auto"></span>
+    <span id="lastUpdate" class="text-xs text-slate-500 ml-auto tnum"></span>
   </section>
 
   <!-- Node filter (muncul bila >1 node) -->
@@ -99,7 +135,7 @@
   <!-- Modal container -->
   <div id="modalRoot"></div>
 
-  <script src="/features.js?v=9"></script>
-  <script src="/app.js?v=9"></script>
+  <script src="/features.js?v=10"></script>
+  <script src="/app.js?v=10"></script>
 </body>
 </html>

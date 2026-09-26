@@ -183,11 +183,11 @@ async function openConsole(vmid, name, ctype) {
     <p class="text-xs text-slate-400 mb-4">Pilih mode konsol untuk CT ini.</p>
     <div class="grid grid-cols-1 gap-2.5">
       <button id="cm_xterm" class="text-left px-4 py-3 rounded-xl bg-slate-800 hover:bg-emerald-800 border border-slate-700 transition">
-        <div class="font-medium text-sm">⌨ Terminal (xterm)${last === 'xterm' ? ' <span class="text-[10px] text-emerald-400">• terakhir</span>' : ''}</div>
+        <div class="font-medium text-sm flex items-center gap-2"><svg class="ic ic-4"><use href="#i-keyboard"/></svg>Terminal (xterm)${last === 'xterm' ? ' <span class="text-[10px] text-emerald-400">• terakhir</span>' : ''}</div>
         <div class="text-[11px] text-slate-400 mt-0.5">Ringan, teks bisa di-copy, tmux persist. Disarankan.</div>
       </button>
       <button id="cm_vnc" class="text-left px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
-        <div class="font-medium text-sm">🖥 noVNC (grafis)${last === 'vnc' ? ' <span class="text-[10px] text-emerald-400">• terakhir</span>' : ''}</div>
+        <div class="font-medium text-sm flex items-center gap-2"><svg class="ic ic-4"><use href="#i-globe"/></svg>noVNC (grafis)${last === 'vnc' ? ' <span class="text-[10px] text-emerald-400">• terakhir</span>' : ''}</div>
         <div class="text-[11px] text-slate-400 mt-0.5">Tampilan layar penuh seperti konsol Proxmox asli.</div>
       </button>
     </div>
@@ -213,12 +213,12 @@ async function openTerminal(vmid, name, opts = {}) {
         <span id="vnc_state" class="text-[11px] text-slate-400 shrink-0">menghubungkan…</span>
       </div>
       <div class="flex gap-1.5 items-center flex-wrap justify-end">
-        <button id="tm_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨</button>
-        <button id="tm_sel" title="Mode pilih: tap awal lalu tap akhir" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📐 Pilih</button>
-        <button id="tm_paste" title="Paste dari clipboard" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
-        <button id="tm_copy" title="Salin teks terseleksi" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📄 Copy</button>
-        <button id="tm_tmux" title="Sesi persist (tmux)" class="px-2.5 py-1 rounded-lg ${useTmux ? 'bg-emerald-700' : 'bg-slate-800'} hover:bg-slate-700 text-xs">🔒 tmux</button>
-        <button onclick="closeModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">✕</button>
+        <button id="tm_kbd" title="Tampilkan keyboard" class="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs"><svg class="ic ic-4"><use href="#i-keyboard"/></svg></button>
+        <button id="tm_sel" title="Mode pilih: tap awal lalu tap akhir" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-3"><use href="#i-select"/></svg>Pilih</button>
+        <button id="tm_paste" title="Paste dari clipboard" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-3"><use href="#i-clipboard"/></svg>Paste</button>
+        <button id="tm_copy" title="Salin teks terseleksi" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-3"><use href="#i-copy"/></svg>Copy</button>
+        <button id="tm_tmux" title="Sesi persist (tmux)" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg ${useTmux ? 'bg-emerald-700' : 'bg-slate-800'} hover:bg-slate-700 text-xs"><svg class="ic ic-3"><use href="#i-lock"/></svg>tmux</button>
+        <button onclick="closeModal()" title="Tutup" class="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-4"><use href="#i-close"/></svg></button>
       </div>
     </div>
     <div id="tm_screen" class="bg-black flex-1 overflow-hidden relative" style="padding:4px"></div>
@@ -232,7 +232,7 @@ async function openTerminal(vmid, name, opts = {}) {
       <button id="tm_esc" title="Escape" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs shrink-0">Esc</button>
       <button id="tm_ctrlc" title="Ctrl+C (batalkan)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 text-xs shrink-0">Ctrl+C</button>
     </div>
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0"><b>📐 Pilih</b> = tahan & geser untuk blok teks, lepas jari = tersalin · <b>↑↓</b> = histori command.</div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0"><b>Pilih</b> = tahan & geser untuk blok teks, lepas jari = tersalin · <b>↑↓</b> = histori command.</div>
   </div>`, 'max-w-5xl');
   const DOT = { info: 'bg-amber-400', warn: 'bg-amber-400', ok: 'bg-emerald-400', err: 'bg-red-500' };
   const setState = (t, kind = 'info') => {
@@ -508,18 +508,18 @@ async function openVNC(vmid, name) {
         <span id="vnc_state" class="text-[11px] text-slate-400 shrink-0">menghubungkan…</span>
       </div>
       <div class="flex gap-1.5 items-center flex-wrap justify-end">
-        <button id="vnc_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨</button>
-        <button id="vnc_paste" title="Paste teks ke terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
-        <button id="vnc_copy" title="Salin teks terseleksi dari terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📄 Copy</button>
+        <button id="vnc_kbd" title="Tampilkan keyboard" class="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs"><svg class="ic ic-4"><use href="#i-keyboard"/></svg></button>
+        <button id="vnc_paste" title="Paste teks ke terminal" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-3"><use href="#i-clipboard"/></svg>Paste</button>
+        <button id="vnc_copy" title="Salin teks terseleksi dari terminal" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-3"><use href="#i-copy"/></svg>Copy</button>
         <button id="vnc_cad" title="Kirim Ctrl+Alt+Del" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">C-A-D</button>
-        <button id="vnc_fit" title="Fit / actual size" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">⤢</button>
-        <button onclick="closeModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">✕</button>
+        <button id="vnc_fit" title="Fit / actual size" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Fit</button>
+        <button onclick="closeModal()" title="Tutup" class="inline-flex items-center justify-center w-8 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs"><svg class="ic ic-4"><use href="#i-close"/></svg></button>
       </div>
     </div>
     <div id="vnc_screen" class="bg-black flex-1 overflow-hidden relative"></div>
     <input id="vnc_kbd_in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
       class="absolute" style="left:0;top:0;height:1px;width:1px;opacity:0;border:0;padding:0;background:transparent;color:transparent" />
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨</b> untuk mengetik · seleksi teks lalu <b>📄 Copy</b> · <b>📋 Paste</b> kirim clipboard. Sesi tersambung ulang otomatis.</div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>keyboard</b> untuk mengetik · seleksi teks lalu <b>Copy</b> · <b>Paste</b> kirim clipboard. Sesi tersambung ulang otomatis.</div>
   </div>`, 'max-w-5xl');
   const DOT = { info: 'bg-amber-400', warn: 'bg-amber-400', ok: 'bg-emerald-400', err: 'bg-red-500' };
   const setState = (t, kind = 'info') => {

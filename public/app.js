@@ -109,6 +109,10 @@ async function api(path, opts = {}) {
     headers: { 'Content-Type': 'application/json', ...authHeaders, ...(opts.headers || {}) },
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !path.startsWith('/auth/')) {
+    // Sesi kedaluwarsa / belum login → tampilkan overlay login.
+    if (typeof showLogin === 'function') showLogin();
+  }
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
 }

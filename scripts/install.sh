@@ -118,6 +118,66 @@ fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 chmod 640 "$APP_DIR/.env"
 
+# --- 6b. Setup akun login dashboard (opsional, interaktif) ---
+# Hanya menawarkan bila belum ada DASHBOARD_USER berisi di .env.
+setup_login() {
+  # Lewati bila tak ada TTY (mis. dijalankan via pipe non-interaktif) kecuali env memaksa.
+  local has_user
+  has_user="$(grep -oP '^DASHBOARD_USER=\K.*' "$APP_DIR/.env" 2>/dev/null || echo '')"
+  if [[ -n "$has_user" ]]; then
+    ok "Login dashboard sudah dikonfigurasi (user: $has_user) — dilewati."
+    return
+  fi
+
+  # Mode non-interaktif: ambil dari env DASH_USER / DASH_PASS bila tersedia.
+  local u p
+  if [[ -n "${DASH_USER:-}" && -n "${DASH_PASS:-}" ]]; then
+    u="$DASH_USER"; p="$DASH_PASS"
+  elif [[ -t 0 ]]; then
+    echo
+    info "Setup akun login dashboard (agar akses butuh username & password)."
+    read -rp "  Aktifkan login? [Y/n] " ans
+    ans="${ans:-Y}"
+    [[ "$ans" =~ ^[Yy] ]] || { warn "Login tidak diaktifkan (dashboard terbuka di LAN)."; return; }
+    read -rp "  Username admin : " u
+    while [[ -z "$u" ]]; do read -rp "  Username admin : " u; done
+    while :; do
+      read -rsp "  Password       : " p; echo
+      read -rsp "  Ulangi password: " p2; echo
+      [[ -n "$p" && "$p" == "$p2" ]] && break
+      warn "Password kosong atau tidak cocok — ulangi."
+    done
+  else
+    warn "Tak ada TTY & DASH_USER/DASH_PASS tak diset — lewati setup login."
+    warn "Aktifkan nanti: isi DASHBOARD_USER & DASHBOARD_PASSWORD di $APP_DIR/.env lalu restart."
+    return
+  fi
+
+  # Hash password scrypt (tak simpan plaintext) via modul auth.js aplikasi.
+  local hash
+  hash="$(cd "$APP_DIR" && node -e "import('./src/auth.js').then(m=>{process.stdout.write(m.hashPassword(process.argv[1]))}).catch(e=>{console.error(e);process.exit(1)})" "$p" 2>/dev/null || true)"
+
+  # Tulis ke .env: hapus baris lama lalu tambah baru.
+  sed -i '/^DASHBOARD_USER=/d;/^DASHBOARD_PASSWORD=/d;/^DASHBOARD_PASSWORD_HASH=/d' "$APP_DIR/.env"
+  {
+    echo "DASHBOARD_USER=$u"
+    if [[ -n "$hash" ]]; then
+      echo "DASHBOARD_PASSWORD_HASH=$hash"
+    else
+      # Fallback bila hashing gagal: simpan plaintext (di-hash server saat boot).
+      echo "DASHBOARD_PASSWORD=$p"
+    fi
+  } >> "$APP_DIR/.env"
+  chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
+  chmod 640 "$APP_DIR/.env"
+  if [[ -n "$hash" ]]; then
+    ok "Login diaktifkan (user: $u, password tersimpan sebagai hash scrypt)."
+  else
+    ok "Login diaktifkan (user: $u)."
+  fi
+}
+setup_login
+
 # --- 7. systemd unit ---
 info "Membuat & mengaktifkan systemd service…"
 NODE_BIN="$(command -v node)"
@@ -186,4 +246,9 @@ fi
 echo "-----------------------------------------------------------"
 echo "  Cek status  : systemctl status ${SERVICE}"
 echo "  Lihat log   : journalctl -u ${SERVICE} -f"
+if grep -q '^DASHBOARD_USER=..*' "$APP_DIR/.env" 2>/dev/null; then
+  echo "  Login       : AKTIF — user: $(grep -oP '^DASHBOARD_USER=\K.*' "$APP_DIR/.env")"
+else
+  echo "  Login       : nonaktif (dashboard terbuka). Aktifkan: isi DASHBOARD_USER & DASHBOARD_PASSWORD di .env → restart."
+fi
 echo "==========================================================="

@@ -265,7 +265,7 @@ async function openTerminal(vmid, name, opts = {}) {
 
     const token = localStorage.getItem('pve_dash_token') || '';
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    let ws = null, manualClose = false, reconnecting = false, retry = 0, tmux = useTmux, firstOpen = true;
+    let ws = null, manualClose = false, reconnecting = false, retry = 0, tmux = useTmux && !isNode, firstOpen = true;
 
     const connect = async () => {
       // Tiket terminal BARU tiap konek (sekali-pakai)

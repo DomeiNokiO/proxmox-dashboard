@@ -185,6 +185,7 @@ async function openConsole(vmid, name) {
       <div class="flex gap-1.5 items-center shrink-0">
         <button id="vnc_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨ Keyboard</button>
         <button id="vnc_paste" title="Paste teks ke terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
+        <button id="vnc_copy" title="Salin teks terseleksi dari terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📄 Copy</button>
         <button id="vnc_cad" title="Kirim Ctrl+Alt+Del" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Ctrl+Alt+Del</button>
         <button id="vnc_fit" title="Fit / actual size" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">⤢ Fit</button>
         <button onclick="closeModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">✕</button>
@@ -193,7 +194,7 @@ async function openConsole(vmid, name) {
     <div id="vnc_screen" class="bg-black flex-1 overflow-hidden relative"></div>
     <input id="vnc_kbd_in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
       class="absolute" style="left:0;top:0;height:1px;width:1px;opacity:0;border:0;padding:0;background:transparent;color:transparent" />
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨ Keyboard</b> untuk mengetik dari HP · <b>Paste</b> mengirim teks clipboard.</div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨ Keyboard</b> untuk mengetik · seleksi teks lalu <b>📄 Copy</b> · <b>📋 Paste</b> kirim clipboard. Sesi tersambung ulang otomatis saat kembali.</div>
   </div>`, 'max-w-5xl');
   const setState = (t) => { const el = $('#vnc_state'); if (el) el.textContent = t; };
   try {
@@ -203,20 +204,49 @@ async function openConsole(vmid, name) {
       .find((c) => typeof c === 'function');
     if (typeof RFB !== 'function') throw new Error('RFB class tidak ditemukan di modul noVNC');
     setState('meminta tiket…');
-    const t = await api(`/guests/${vmid}/vncticket`);
     const token = localStorage.getItem('pve_dash_token') || '';
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const qs = `vmid=${vmid}&port=${encodeURIComponent(t.port)}&vncticket=${encodeURIComponent(t.ticket)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-    const url = `${proto}://${location.host}/vncws?${qs}`;
+    let rfb = null;
+    let lastClip = '';          // teks clipboard terakhir dari server (untuk tombol Copy)
+    let manualClose = false;    // true bila user menutup modal (jangan reconnect)
+    let reconnecting = false;
+
+    const buildRFB = async () => {
+      // Ambil tiket BARU setiap konek (tiket VNC Proxmox sekali-pakai & cepat kedaluwarsa)
+      const t = await api(`/guests/${vmid}/vncticket`);
+      const scr = document.getElementById('vnc_screen');
+      if (scr) scr.innerHTML = ''; // buang canvas lama sebelum konek ulang
+      const qs = `vmid=${vmid}&port=${encodeURIComponent(t.port)}&vncticket=${encodeURIComponent(t.ticket)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+      const url = `${proto}://${location.host}/vncws?${qs}`;
+      const r = new RFB(document.getElementById('vnc_screen'), url, {
+        wsProtocols: ['binary'],
+        credentials: { password: t.ticket },
+      });
+      r.scaleViewport = true; r.resizeSession = false; r.clipViewport = false;
+      r.addEventListener('connect', () => { setState('terhubung'); reconnecting = false; r.focus(); });
+      // Server mengirim isi clipboard saat teks diseleksi di terminal → simpan untuk Copy
+      r.addEventListener('clipboard', (e) => { if (e.detail && typeof e.detail.text === 'string') lastClip = e.detail.text; });
+      r.addEventListener('securityfailure', () => setState('auth gagal'));
+      r.addEventListener('disconnect', (e) => {
+        if (manualClose) return;
+        setState(e.detail?.clean ? 'terputus — menyambung ulang…' : 'koneksi putus — menyambung ulang…');
+        scheduleReconnect();
+      });
+      return r;
+    };
+
+    const scheduleReconnect = () => {
+      if (manualClose || reconnecting) return;
+      reconnecting = true;
+      setTimeout(async () => {
+        if (manualClose) return;
+        try { rfb = await buildRFB(); window._rfb = rfb; }
+        catch (err) { reconnecting = false; setState('gagal menyambung — coba lagi 3s'); if (!manualClose) setTimeout(scheduleReconnect, 3000); }
+      }, 800);
+    };
+
     setState('menghubungkan…');
-    const rfb = new RFB(document.getElementById('vnc_screen'), url, {
-      wsProtocols: ['binary'],
-      credentials: { password: t.ticket },
-    });
-    rfb.scaleViewport = true; rfb.resizeSession = false; rfb.clipViewport = false;
-    rfb.addEventListener('connect', () => { setState('terhubung'); rfb.focus(); });
-    rfb.addEventListener('disconnect', (e) => setState(e.detail?.clean ? 'terputus' : 'gagal konek'));
-    rfb.addEventListener('securityfailure', () => setState('auth gagal'));
+    rfb = await buildRFB();
     window._rfb = rfb;
 
     // ===== Responsif terhadap soft-keyboard (visualViewport) =====
@@ -240,11 +270,22 @@ async function openConsole(vmid, name) {
     fitToViewport();
     if (vv) { vv.addEventListener('resize', fitToViewport); vv.addEventListener('scroll', fitToViewport); }
     else window.addEventListener('resize', fitToViewport);
+
+    // ===== Auto-reconnect saat kembali ke tab/app (browser sering putus WS di background) =====
+    const isDead = () => !rfb || rfb._rfbConnectionState === 'disconnected' || rfb._rfbConnectionState === 'disconnecting';
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !manualClose && !reconnecting && isDead()) {
+        setState('menyambung ulang…'); scheduleReconnect();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
     // Bersihkan listener saat modal ditutup
     const modalRoot = document.getElementById('modalRoot');
     const mo = new MutationObserver(() => {
       if (!document.getElementById('vnc_root')) {
+        manualClose = true;
         document.body.style.overflow = '';
+        document.removeEventListener('visibilitychange', onVisible);
         if (vv) { vv.removeEventListener('resize', fitToViewport); vv.removeEventListener('scroll', fitToViewport); }
         else window.removeEventListener('resize', fitToViewport);
         try { rfb.disconnect(); } catch { /* */ }
@@ -266,6 +307,12 @@ async function openConsole(vmid, name) {
         rfb.sendKey(code, null, false);
       }
       toast('Teks dikirim ke terminal', 'ok');
+    };
+    // Copy: teks yang diseleksi di terminal dikirim server via event 'clipboard' → salin ke clipboard HP
+    $('#vnc_copy').onclick = async () => {
+      if (!lastClip) { toast('Seleksi dulu teks di terminal (klik-seret), lalu Copy', 'warn'); return; }
+      try { await navigator.clipboard.writeText(lastClip); toast('Tersalin ke clipboard', 'ok'); }
+      catch { prompt('Salin teks ini:', lastClip); }
     };
     $('#vnc_cad').onclick = () => { rfb.sendCtrlAltDel(); toast('Ctrl+Alt+Del dikirim', 'info'); };
     let fit = true;

@@ -115,6 +115,40 @@ vncWss.on('connection', async (client, req) => {
   }
 });
 
+// ===== Terminal (xterm) WS proxy — untuk LXC via termproxy =====
+const termWss = new WebSocketServer({ noServer: true });
+termWss.on('connection', async (client, req) => {
+  const url = new URL(req.url, 'http://localhost');
+  const vmid = url.searchParams.get('vmid');
+  const port = url.searchParams.get('port');
+  const ticket = url.searchParams.get('vncticket');
+  try {
+    const res = await pve.clusterResources();
+    const g = res.find((x) => String(x.vmid) === String(vmid) && x.type !== 'storage');
+    if (!g) throw new Error('guest tidak ditemukan');
+    const { node, type } = g;
+    if (!port || !ticket) throw new Error('port/ticket wajib');
+    const target = pve.termWebsocketURL(node, type, vmid, port, ticket);
+    const upstream = new WebSocket(target, {
+      agent: new https.Agent({ rejectUnauthorized: config.proxmox.verifySSL }),
+      headers: { Authorization: pve.authHeader },
+    });
+    upstream.binaryType = 'nodebuffer';
+    client.binaryType = 'nodebuffer';
+    const closeAll = () => { try { client.close(); } catch {} try { upstream.close(); } catch {} };
+    upstream.on('open', () => client.send(JSON.stringify({ __proxy: 'ready' })));
+    upstream.on('message', (d) => client.readyState === client.OPEN && client.send(d));
+    client.on('message', (d) => upstream.readyState === upstream.OPEN && upstream.send(d));
+    upstream.on('close', closeAll);
+    client.on('close', closeAll);
+    upstream.on('error', (e) => { try { client.send(JSON.stringify({ __proxy: 'error', message: e.message })); } catch {} closeAll(); });
+    client.on('error', closeAll);
+  } catch (e) {
+    try { client.send(JSON.stringify({ __proxy: 'error', message: e.message })); } catch {}
+    client.close();
+  }
+});
+
 // Routing upgrade berdasarkan path
 server.on('upgrade', (req, socket, head) => {
   const { pathname } = new URL(req.url, 'http://localhost');
@@ -123,6 +157,8 @@ server.on('upgrade', (req, socket, head) => {
     statusWss.handleUpgrade(req, socket, head, (ws) => statusWss.emit('connection', ws, req));
   } else if (pathname === '/vncws') {
     vncWss.handleUpgrade(req, socket, head, (ws) => vncWss.emit('connection', ws, req));
+  } else if (pathname === '/termws') {
+    termWss.handleUpgrade(req, socket, head, (ws) => termWss.emit('connection', ws, req));
   } else {
     socket.destroy();
   }

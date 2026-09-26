@@ -217,4 +217,24 @@ export class ProxmoxClient {
     const base = this.base.replace('/api2/json', '').replace('https://', 'wss://');
     return `${base}/api2/json/nodes/${node}/${type}/${vmid}/vncwebsocket?port=${port}&vncticket=${encodeURIComponent(vncticket)}`;
   }
+
+  // ===== Terminal (xterm.js) — LXC pakai termproxy, VM/host pakai termproxy juga =====
+  // type: 'lxc' → termproxy pada container; 'node' → shell node; cmd opsional utk lxc (mis. jalankan tmux)
+  termProxy(node, type, vmid, cmd) {
+    if (type === 'lxc') {
+      const body = {};
+      if (cmd) body.cmd = cmd;
+      return this.post(`/nodes/${node}/lxc/${vmid}/termproxy`, body);
+    }
+    // QEMU tidak punya termproxy teks (pakai VNC); untuk node shell:
+    return this.post(`/nodes/${node}/termproxy`, {});
+  }
+  // WS URL untuk terminal (vncwebsocket dipakai juga oleh termproxy di LXC)
+  termWebsocketURL(node, type, vmid, port, ticket) {
+    const base = this.base.replace('/api2/json', '').replace('https://', 'wss://');
+    if (type === 'lxc') {
+      return `${base}/api2/json/nodes/${node}/lxc/${vmid}/vncwebsocket?port=${port}&vncticket=${encodeURIComponent(ticket)}`;
+    }
+    return `${base}/api2/json/nodes/${node}/vncwebsocket?port=${port}&vncticket=${encodeURIComponent(ticket)}`;
+  }
 }

@@ -239,6 +239,17 @@ export function buildRouter(pve) {
     return undefined;
   }));
 
+  // Terminal xterm untuk LXC (termproxy). Opsi tmux=1 → attach/buat sesi tmux (persist).
+  r.get('/guests/:vmid/termticket', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    if (type !== 'lxc') return res.status(400).json({ error: 'Terminal xterm hanya untuk CT/LXC. VM pakai Console (VNC).' });
+    // Login shell biasa; tmux di-attach dari sisi klien (ketik cmd) agar persist.
+    const t = await pve.termProxy(node, type, req.params.vmid);
+    // termproxy mengembalikan { ticket, port, user, upid }
+    res.json({ ticket: t.ticket, port: t.port, user: t.user, node, type });
+    return undefined;
+  }));
+
   // ===== Create CT =====
   r.post('/cts', h(async (req, res) => {
     const {

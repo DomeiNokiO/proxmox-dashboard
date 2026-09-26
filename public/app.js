@@ -241,7 +241,7 @@ function renderGuests() {
         <button data-del="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-red-900 text-xs ml-auto">🗑</button>
       </div>
       <div class="mt-1.5 flex flex-wrap gap-1.5 border-t border-slate-800 pt-2">
-        ${run ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
+        ${run ? `<button data-console="${g.vmid}" data-name="${esc(g.name)}" data-ctype="${g.type}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🖥 Console</button>` : ''}
         <button data-hist="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📈 Histori</button>
         <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
         <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
@@ -444,7 +444,7 @@ document.addEventListener('click', (e) => {
   else if (d.snap) Features.openSnapshots(d.snap, d.name);
   else if (d.backup) Features.openBackup(d.backup, d.name);
   else if (d.migrate) Features.openMigrate(d.migrate, d.name, d.node);
-  else if (d.console) Features.openConsole(d.console, d.name);
+  else if (d.console) Features.openConsole(d.console, d.name, d.ctype);
   else if (d.nodefilter != null) {
     state.nodeFilter = d.nodefilter;
     document.querySelectorAll('#nodeFilter button').forEach((b) => b.classList.toggle('active', b === t));

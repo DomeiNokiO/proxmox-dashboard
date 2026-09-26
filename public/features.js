@@ -173,8 +173,191 @@ async function openMigrate(vmid, name, curNode) {
   };
 }
 
-// ---------- 5. VNC Console (noVNC via CDN) — VM & CT, responsif, bisa paste ----------
-async function openConsole(vmid, name) {
+// ---------- 5. Console — CT: terminal xterm.js (persist tmux, copy nativ) · VM: noVNC ----------
+async function openConsole(vmid, name, ctype) {
+  if (ctype === 'lxc') return openTerminal(vmid, name);
+  return openVNC(vmid, name);
+}
+
+// 5a. Terminal xterm.js untuk CT/LXC — ringan, teks bisa diseleksi/copy, tmux = persist
+async function openTerminal(vmid, name) {
+  const useTmux = localStorage.getItem('pve_dash_tmux') !== '0'; // default ON
+  modal(`<div id="vnc_root" class="flex flex-col" style="height:82vh">
+    <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800 shrink-0 flex-wrap">
+      <div class="flex items-center gap-2 min-w-0">
+        <span id="vnc_dot" class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" title="menghubungkan…"></span>
+        <h2 class="font-semibold truncate text-sm">#${vmid} <span class="text-xs text-slate-500 font-normal">${esc(name) || ''}</span></h2>
+        <span id="vnc_state" class="text-[11px] text-slate-400 shrink-0">menghubungkan…</span>
+      </div>
+      <div class="flex gap-1.5 items-center flex-wrap justify-end">
+        <button id="tm_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨</button>
+        <button id="tm_paste" title="Paste dari clipboard" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
+        <button id="tm_copy" title="Salin teks terseleksi" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📄 Copy</button>
+        <button id="tm_tmux" title="Sesi persist (tmux)" class="px-2.5 py-1 rounded-lg ${useTmux ? 'bg-emerald-700' : 'bg-slate-800'} hover:bg-slate-700 text-xs">🔒 tmux</button>
+        <button onclick="closeModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">✕</button>
+      </div>
+    </div>
+    <div id="tm_screen" class="bg-black flex-1 overflow-hidden relative" style="padding:4px"></div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Seleksi teks = auto-copy · <b>🔒 tmux</b> ON = command tetap jalan walau browser ditutup, sambung lagi lanjut di tempat terakhir.</div>
+  </div>`, 'max-w-5xl');
+  const DOT = { info: 'bg-amber-400', warn: 'bg-amber-400', ok: 'bg-emerald-400', err: 'bg-red-500' };
+  const setState = (t, kind = 'info') => {
+    const el = $('#vnc_state'); if (el) el.textContent = t;
+    const d = $('#vnc_dot'); if (d) { d.className = `inline-block w-2.5 h-2.5 rounded-full shrink-0 ${DOT[kind] || DOT.info}`; d.title = t; }
+  };
+  try {
+    // Muat xterm.js + addon (fit) dari CDN
+    const [{ Terminal }, { FitAddon }] = await Promise.all([
+      import('https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm'),
+      import('https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm'),
+    ]);
+    // CSS xterm
+    if (!document.getElementById('xterm-css')) {
+      const l = document.createElement('link');
+      l.id = 'xterm-css'; l.rel = 'stylesheet';
+      l.href = 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css';
+      document.head.appendChild(l);
+    }
+    const term = new Terminal({
+      cursorBlink: true, fontSize: 14, scrollback: 5000,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      theme: { background: '#000000', foreground: '#d1d5db' },
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.open(document.getElementById('tm_screen'));
+    fit.fit();
+    term.focus();
+
+    const token = localStorage.getItem('pve_dash_token') || '';
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    let ws = null, manualClose = false, reconnecting = false, retry = 0, tmux = useTmux, firstOpen = true;
+
+    const connect = async () => {
+      // Tiket terminal BARU tiap konek (sekali-pakai)
+      const t = await api(`/guests/${vmid}/termticket?tmux=${tmux ? 1 : 0}`);
+      const qs = `vmid=${vmid}&port=${encodeURIComponent(t.port)}&vncticket=${encodeURIComponent(t.ticket)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+      ws = new WebSocket(`${proto}://${location.host}/termws?${qs}`);
+      ws.binaryType = 'arraybuffer';
+      const dec = new TextDecoder(); const enc = new TextEncoder();
+      ws.onopen = () => {
+        // Handshake protokol Proxmox: kirim "user:ticket\n"
+        ws.send(`${t.user || 'root@pam'}:${t.ticket}\n`);
+        // Kirim ukuran awal + mulai
+        setState('terhubung', 'ok'); reconnecting = false; retry = 0;
+        const { cols, rows } = term;
+        try { ws.send(`1:${cols}:${rows}:`); } catch { /* */ }
+        // tmux: attach/buat sesi 'dash' agar command tetap hidup walau browser ditutup.
+        // Dikirim tiap konek — attach ke sesi yg sama = lanjut di tempat terakhir.
+        if (tmux) {
+          setTimeout(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              const c = ' command -v tmux >/dev/null 2>&1 && { tmux attach -t dash 2>/dev/null || tmux new -s dash; }\n';
+              ws.send('0:' + new TextEncoder().encode(c).length + ':' + c);
+            }
+          }, firstOpen ? 500 : 300);
+        }
+        firstOpen = false;
+        // Keepalive ping tiap 30s (protokol Proxmox term)
+        ws._ka = setInterval(() => { try { ws.readyState === WebSocket.OPEN && ws.send('2'); } catch { /* */ } }, 30000);
+      };
+      ws.onmessage = (ev) => {
+        let txt;
+        if (typeof ev.data === 'string') txt = ev.data;
+        else txt = dec.decode(new Uint8Array(ev.data));
+        // Pesan kontrol proxy (JSON) diabaikan utk tampilan
+        if (txt.startsWith('{"__proxy"')) {
+          try { const m = JSON.parse(txt); if (m.__proxy === 'error') { setState('proxy: ' + m.message, 'err'); } } catch { /* */ }
+          return;
+        }
+        term.write(txt);
+      };
+      ws.onclose = () => { try { clearInterval(ws._ka); } catch { /* */ } if (!manualClose) { setState('menyambung ulang…', 'warn'); scheduleReconnect(); } };
+      ws.onerror = () => { try { ws.close(); } catch { /* */ } };
+      // Ketikan user → kirim ke Proxmox dgn prefix "0:len:"
+      term._dashData && term._dashData.dispose();
+      term._dashData = term.onData((d) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          const b = enc.encode(d);
+          ws.send('0:' + b.length + ':' + d);
+        }
+      });
+    };
+    const scheduleReconnect = () => {
+      if (manualClose || reconnecting) return;
+      reconnecting = true; retry++;
+      setTimeout(() => { if (!manualClose) connect().catch(() => { reconnecting = false; setState('gagal — coba lagi…', 'err'); setTimeout(scheduleReconnect, 3000); }); }, Math.min(800 * retry, 5000));
+    };
+
+    setState('menghubungkan…');
+    await connect();
+
+    // ===== Copy: seleksi = otomatis ke clipboard (fallback prompt di HTTP) =====
+    const doCopy = async () => {
+      const sel = term.getSelection();
+      if (!sel) { toast('Seleksi teks di terminal dulu (klik-seret)', 'warn'); return; }
+      try {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(sel); toast('Tersalin', 'ok'); }
+        else window.prompt('Tahan untuk menyalin:', sel);
+      } catch { window.prompt('Tahan untuk menyalin:', sel); }
+    };
+    term.onSelectionChange(() => { /* seleksi siap; user tap Copy atau otomatis di secure ctx */ });
+    $('#tm_copy').onclick = doCopy;
+    // Paste
+    $('#tm_paste').onclick = async () => {
+      let txt = '';
+      try { txt = await navigator.clipboard.readText(); } catch { txt = window.prompt('Teks untuk paste:') || ''; }
+      if (txt && ws && ws.readyState === WebSocket.OPEN) { const enc = new TextEncoder(); ws.send('0:' + enc.encode(txt).length + ':' + txt); }
+    };
+    // tmux toggle
+    $('#tm_tmux').onclick = () => {
+      tmux = !tmux; localStorage.setItem('pve_dash_tmux', tmux ? '1' : '0');
+      $('#tm_tmux').className = `px-2.5 py-1 rounded-lg ${tmux ? 'bg-emerald-700' : 'bg-slate-800'} hover:bg-slate-700 text-xs`;
+      toast(tmux ? 'tmux ON — reconnect utk aktif' : 'tmux OFF', 'info');
+    };
+    // Keyboard mobile: fokus terminal (xterm punya textarea tersembunyi sendiri)
+    const focusTerm = () => { const ta = document.querySelector('#tm_screen textarea'); if (ta) ta.focus({ preventScroll: true }); else term.focus(); };
+    $('#tm_kbd').onclick = focusTerm;
+
+    // ===== Responsif keyboard (visualViewport) + fit =====
+    const root = document.getElementById('vnc_root');
+    const bg = document.getElementById('modalBg');
+    if (bg) { bg.classList.remove('items-center'); bg.classList.add('items-start'); bg.classList.remove('p-4'); bg.classList.add('p-0','sm:p-4'); }
+    const card = root && root.parentElement; if (card) card.classList.remove('max-h-[90vh]');
+    const vv = window.visualViewport;
+    document.body.style.overflow = 'hidden';
+    const relayout = () => {
+      const h = vv ? vv.height : window.innerHeight; const top = vv ? vv.offsetTop : 0;
+      if (bg) { bg.style.position = 'fixed'; bg.style.top = top + 'px'; bg.style.left = '0'; bg.style.right = '0'; bg.style.height = h + 'px'; bg.style.bottom = 'auto'; }
+      root.style.height = Math.max(220, Math.round(h - 4)) + 'px';
+      try { fit.fit(); if (ws && ws.readyState === WebSocket.OPEN) ws.send(`1:${term.cols}:${term.rows}:`); } catch { /* */ }
+    };
+    relayout();
+    if (vv) { vv.addEventListener('resize', relayout); vv.addEventListener('scroll', relayout); } else window.addEventListener('resize', relayout);
+    const onVisible = () => { if (document.visibilityState === 'visible' && !manualClose && (!ws || ws.readyState !== WebSocket.OPEN) && !reconnecting) { setState('menyambung ulang…','warn'); scheduleReconnect(); } };
+    document.addEventListener('visibilitychange', onVisible);
+
+    const modalRoot = document.getElementById('modalRoot');
+    const mo = new MutationObserver(() => {
+      if (!document.getElementById('vnc_root')) {
+        manualClose = true;
+        document.body.style.overflow = '';
+        document.removeEventListener('visibilitychange', onVisible);
+        if (vv) { vv.removeEventListener('resize', relayout); vv.removeEventListener('scroll', relayout); } else window.removeEventListener('resize', relayout);
+        try { ws && ws.close(); } catch { /* */ }
+        try { term.dispose(); } catch { /* */ }
+        mo.disconnect();
+      }
+    });
+    if (modalRoot) mo.observe(modalRoot, { childList: true, subtree: true });
+  } catch (e) {
+    setState('error: ' + e.message, 'err');
+    toast('Terminal gagal dimuat: ' + e.message, 'err');
+  }
+}
+
+// 5b. VNC (noVNC) — untuk VM/QEMU (display grafis)
+async function openVNC(vmid, name) {
   modal(`<div id="vnc_root" class="flex flex-col" style="height:82vh">
     <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800 shrink-0 flex-wrap">
       <div class="flex items-center gap-2 min-w-0">

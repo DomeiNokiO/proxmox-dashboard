@@ -9,9 +9,28 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { config } from './config.js';
 import { ProxmoxClient } from './proxmox.js';
 import { buildRouter } from './routes.js';
+import {
+  hashPassword, verifyPassword, loadSessionSecret, SessionManager,
+  parseCookies, LoginRateLimiter, SESSION_COOKIE,
+} from './auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pve = new ProxmoxClient(config.proxmox);
+
+// ===== Auth login (sesi cookie ber-tandatangan) =====
+const loginEnabled = !!(config.auth.username && (config.auth.password || config.auth.passwordHash));
+const sessions = new SessionManager(config.auth.sessionSecret || loadSessionSecret());
+const loginLimiter = new LoginRateLimiter();
+// Hash password: pakai hash siap-pakai bila ada, else hash plaintext dari .env sekali saat boot.
+const storedHash = config.auth.passwordHash || (config.auth.password ? hashPassword(config.auth.password) : '');
+
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+}
+function hasValidSession(req) {
+  const tok = parseCookies(req)[SESSION_COOKIE];
+  return tok ? sessions.verify(tok) : null;
+}
 
 // Perbandingan token tahan-timing (cegah timing attack tebak token dashboard)
 function safeEqual(a, b) {
@@ -45,10 +64,54 @@ app.use((_req, res, next) => {
   next();
 });
 
+// ===== Endpoint login/logout (sebelum authGuard) =====
+const secureCookie = (req) => (req.headers['x-forwarded-proto'] === 'https') || req.secure;
+function setSessionCookie(req, res, token) {
+  const parts = [
+    `${SESSION_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=43200',
+  ];
+  if (secureCookie(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+app.get('/api/auth/status', (req, res) => {
+  res.json({ loginEnabled, authenticated: !loginEnabled || !!hasValidSession(req) });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  if (!loginEnabled) return res.json({ ok: true }); // login nonaktif → langsung lolos
+  const ip = clientIp(req);
+  const gate = loginLimiter.check(ip);
+  if (!gate.allowed) {
+    return res.status(429).json({ error: `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(gate.retryMs / 60000)} menit.` });
+  }
+  const { username, password } = req.body || {};
+  const userOk = safeEqual(username, config.auth.username);
+  const passOk = verifyPassword(password || '', storedHash);
+  if (userOk && passOk) {
+    loginLimiter.reset(ip);
+    setSessionCookie(req, res, sessions.create(config.auth.username));
+    return res.json({ ok: true });
+  }
+  loginLimiter.fail(ip);
+  return res.status(401).json({ error: 'Username atau password salah' });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const parts = [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
+  if (secureCookie(req)) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+  res.json({ ok: true });
+});
+
 function authGuard(req, res, next) {
-  if (!config.auth.token) return next();
-  const provided = req.headers['x-auth-token'] || req.query.token;
-  if (safeEqual(provided, config.auth.token)) return next();
+  // Prioritas: sesi login (cookie). Fallback: token header legacy (bila dikonfigurasi).
+  if (loginEnabled && hasValidSession(req)) return next();
+  if (config.auth.token) {
+    const provided = req.headers['x-auth-token'] || req.query.token;
+    if (safeEqual(provided, config.auth.token)) return next();
+  }
+  if (!loginEnabled && !config.auth.token) return next(); // keduanya nonaktif = terbuka
   return res.status(401).json({ error: 'Unauthorized' });
 }
 
@@ -59,9 +122,13 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 const server = http.createServer(app);
 
 function checkWsAuth(req) {
-  if (!config.auth.token) return true;
-  const url = new URL(req.url, 'http://localhost');
-  return safeEqual(url.searchParams.get('token'), config.auth.token);
+  if (loginEnabled && hasValidSession(req)) return true;
+  if (config.auth.token) {
+    const url = new URL(req.url, 'http://localhost');
+    if (safeEqual(url.searchParams.get('token'), config.auth.token)) return true;
+  }
+  if (!loginEnabled && !config.auth.token) return true;
+  return false;
 }
 
 // ===== WS #1: broadcast status realtime =====
@@ -120,13 +187,21 @@ const termWss = new WebSocketServer({ noServer: true });
 termWss.on('connection', async (client, req) => {
   const url = new URL(req.url, 'http://localhost');
   const vmid = url.searchParams.get('vmid');
+  const nodeParam = url.searchParams.get('node');
   const port = url.searchParams.get('port');
   const ticket = url.searchParams.get('vncticket');
   try {
-    const res = await pve.clusterResources();
-    const g = res.find((x) => String(x.vmid) === String(vmid) && x.type !== 'storage');
-    if (!g) throw new Error('guest tidak ditemukan');
-    const { node, type } = g;
+    let node; let type;
+    if (vmid) {
+      const res = await pve.clusterResources();
+      const g = res.find((x) => String(x.vmid) === String(vmid) && x.type !== 'storage');
+      if (!g) throw new Error('guest tidak ditemukan');
+      node = g.node; type = g.type;
+    } else if (nodeParam) {
+      node = nodeParam; type = 'node'; // terminal shell node
+    } else {
+      throw new Error('vmid atau node wajib');
+    }
     if (!port || !ticket) throw new Error('port/ticket wajib');
     const target = pve.termWebsocketURL(node, type, vmid, port, ticket);
     const upstream = new WebSocket(target, {
@@ -220,7 +295,7 @@ function stopPolling() {
 server.listen(config.port, config.bindAddress, async () => {
   console.log(`\nProxmox Dashboard aktif di http://${config.bindAddress}:${config.port}`);
   console.log(`Target Proxmox: ${config.proxmox.host}:${config.proxmox.port} node=${config.proxmox.node}`);
-  console.log(`Auth dashboard: ${config.auth.token ? 'AKTIF' : 'NONAKTIF (LAN terbuka)'}`);
+  console.log(`Auth dashboard: ${loginEnabled ? 'LOGIN (username+password)' : (config.auth.token ? 'TOKEN header' : 'NONAKTIF (LAN terbuka)')}`);
   try {
     const v = await pve.version();
     console.log(`Terhubung ke Proxmox VE versi ${v.version}\n`);

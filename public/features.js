@@ -197,7 +197,13 @@ async function openConsole(vmid, name, ctype) {
 }
 
 // 5a. Terminal xterm.js untuk CT/LXC — ringan, teks bisa diseleksi/copy, tmux = persist
-async function openTerminal(vmid, name) {
+async function openNodeTerminal(node) {
+  if (!node) return toast('Node belum diketahui — tunggu data termuat', 'warn');
+  return openTerminal(node, `node: ${node}`, { isNode: true, node });
+}
+
+async function openTerminal(vmid, name, opts = {}) {
+  const isNode = !!opts.isNode;
   const useTmux = localStorage.getItem('pve_dash_tmux') !== '0'; // default ON
   modal(`<div id="vnc_root" class="flex flex-col" style="height:82vh">
     <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800 shrink-0 flex-wrap">
@@ -263,8 +269,11 @@ async function openTerminal(vmid, name) {
 
     const connect = async () => {
       // Tiket terminal BARU tiap konek (sekali-pakai)
-      const t = await api(`/guests/${vmid}/termticket?tmux=${tmux ? 1 : 0}`);
-      const qs = `vmid=${vmid}&port=${encodeURIComponent(t.port)}&vncticket=${encodeURIComponent(t.ticket)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+      const t = isNode
+        ? await api(`/nodes/${encodeURIComponent(opts.node)}/termticket`)
+        : await api(`/guests/${vmid}/termticket?tmux=${tmux ? 1 : 0}`);
+      const idParam = isNode ? `node=${encodeURIComponent(opts.node)}` : `vmid=${vmid}`;
+      const qs = `${idParam}&port=${encodeURIComponent(t.port)}&vncticket=${encodeURIComponent(t.ticket)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
       ws = new WebSocket(`${proto}://${location.host}/termws?${qs}`);
       ws.binaryType = 'arraybuffer';
       const dec = new TextDecoder(); const enc = new TextEncoder();
@@ -684,4 +693,4 @@ async function openVNC(vmid, name) {
 }
 
 // Expose ke global untuk dipanggil app.js
-window.Features = { openHistory, openSnapshots, openBackup, openMigrate, openConsole };
+window.Features = { openHistory, openSnapshots, openBackup, openMigrate, openConsole, openNodeTerminal };

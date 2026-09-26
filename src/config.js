@@ -23,10 +23,17 @@ export const config = {
     verifySSL: (process.env.PVE_VERIFY_SSL || 'false').toLowerCase() === 'true',
   },
 
-  // Auth dashboard sederhana (Basic-like via header token)
+  // Auth dashboard: login username+password (sesi cookie) ATAU token header (legacy/API).
   auth: {
-    // Bila kosong, dashboard TERBUKA (hanya untuk LAN terisolasi). Set untuk produksi.
+    // Token header opsional (legacy, untuk akses API programatik). Kosong = nonaktif.
     token: process.env.DASHBOARD_TOKEN || '',
+    // Login berbasis form. Bila username & (password ATAU passwordHash) diisi → login WAJIB.
+    username: process.env.DASHBOARD_USER || '',
+    // Password plaintext di .env (di-hash saat boot; .env gitignored + mode 600) ATAU
+    // hash scrypt siap-pakai via DASHBOARD_PASSWORD_HASH (lebih aman, tak simpan plaintext).
+    password: process.env.DASHBOARD_PASSWORD || '',
+    passwordHash: process.env.DASHBOARD_PASSWORD_HASH || '',
+    sessionSecret: process.env.SESSION_SECRET || '',
   },
 
   // Default nilai saat create (bisa dioverride dari UI)

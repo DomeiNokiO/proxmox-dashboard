@@ -250,6 +250,77 @@ export function buildRouter(pve) {
     return undefined;
   }));
 
+  // Terminal xterm untuk NODE (shell host Proxmox via termproxy node-level).
+  r.get('/nodes/:node/termticket', h(async (req, res) => {
+    const node = req.params.node;
+    if (!/^[a-zA-Z0-9.-]+$/.test(node)) return res.status(400).json({ error: 'Node tidak valid' });
+    const t = await pve.termProxy(node, 'node');
+    res.json({ ticket: t.ticket, port: t.port, user: t.user, node, type: 'node' });
+    return undefined;
+  }));
+
+  // ===== Edit konfigurasi jaringan guest (IP address + gateway) =====
+  // body: { iface='net0', ip='192.168.1.50/24'|'dhcp', gw='192.168.1.1', bridge? }
+  r.put('/guests/:vmid/network', h(async (req, res) => {
+    const { iface = 'net0', ip, gw, bridge } = req.body || {};
+    if (!/^net\d+$/.test(iface)) return res.status(400).json({ error: 'Nama interface tidak valid (net0..netN)' });
+    if (!ip) return res.status(400).json({ error: 'IP wajib (mis. 192.168.1.50/24 atau dhcp)' });
+    // Validasi format: dhcp/manual atau CIDR IPv4
+    const isCidr = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(ip);
+    if (ip !== 'dhcp' && ip !== 'manual' && !isCidr) {
+      return res.status(400).json({ error: 'IP harus format CIDR (mis. 192.168.1.50/24), atau "dhcp"/"manual"' });
+    }
+    if (gw && !/^(\d{1,3}\.){3}\d{1,3}$/.test(gw)) {
+      return res.status(400).json({ error: 'Gateway harus IPv4 (mis. 192.168.1.1)' });
+    }
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const cfg = await pve.config(node, type, req.params.vmid);
+    const cur = cfg[iface];
+    if (!cur) return res.status(404).json({ error: `Interface ${iface} tidak ada pada guest ini` });
+
+    if (type === 'lxc') {
+      // LXC net string: name=eth0,bridge=vmbr0,ip=...,gw=... — pertahankan field lain, timpa ip/gw.
+      const parts = cur.split(',').filter((p) => p && !/^ip=/.test(p) && !/^gw=/.test(p) && !(bridge && /^bridge=/.test(p)));
+      if (bridge) parts.push(`bridge=${bridge}`);
+      parts.push(`ip=${ip}`);
+      if (ip !== 'dhcp' && ip !== 'manual' && gw) parts.push(`gw=${gw}`);
+      await pve.setConfig(node, type, req.params.vmid, { [iface]: parts.join(',') });
+      res.json({ ok: true, iface, applied: parts.join(','), note: 'LXC: perubahan langsung aktif (reboot bila IP tak berubah di dalam).' });
+      return undefined;
+    }
+    // QEMU: IP tidak diset di config net (itu MAC/model). IP dikelola cloud-init (ipconfigN).
+    const idx = iface.replace('net', '');
+    const ipconfig = ip === 'dhcp' ? 'ip=dhcp' : `ip=${ip}${gw ? `,gw=${gw}` : ''}`;
+    await pve.setConfig(node, type, req.params.vmid, { [`ipconfig${idx}`]: ipconfig });
+    res.json({ ok: true, iface: `ipconfig${idx}`, applied: ipconfig, note: 'VM: butuh cloud-init & reboot agar IP diterapkan.' });
+    return undefined;
+  }));
+
+  // Baca konfigurasi jaringan guest (untuk prefill form edit IP)
+  r.get('/guests/:vmid/network', h(async (req, res) => {
+    const { node, type } = await resolveGuest(req.params.vmid);
+    const cfg = await pve.config(node, type, req.params.vmid);
+    const nets = [];
+    for (const k of Object.keys(cfg)) {
+      if (type === 'lxc' && /^net\d+$/.test(k)) {
+        const s = cfg[k];
+        const ip = (/(?:^|,)ip=([^,]+)/.exec(s) || [])[1] || 'dhcp';
+        const gw = (/(?:^|,)gw=([^,]+)/.exec(s) || [])[1] || '';
+        const br = (/(?:^|,)bridge=([^,]+)/.exec(s) || [])[1] || '';
+        nets.push({ iface: k, ip, gw, bridge: br, raw: s });
+      } else if (type === 'qemu' && /^net\d+$/.test(k)) {
+        const idx = k.replace('net', '');
+        const ic = cfg[`ipconfig${idx}`] || '';
+        const ip = (/(?:^|,)ip=([^,]+)/.exec(ic) || [])[1] || 'dhcp';
+        const gw = (/(?:^|,)gw=([^,]+)/.exec(ic) || [])[1] || '';
+        const br = (/(?:^|,)bridge=([^,]+)/.exec(cfg[k]) || [])[1] || '';
+        nets.push({ iface: k, ip, gw, bridge: br, raw: cfg[k] });
+      }
+    }
+    res.json({ type, nets });
+    return undefined;
+  }));
+
   // ===== Create CT =====
   r.post('/cts', h(async (req, res) => {
     const {

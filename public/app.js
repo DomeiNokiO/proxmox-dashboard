@@ -246,6 +246,7 @@ function renderGuests() {
         <button data-snap="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">📸 Snapshot</button>
         <button data-backup="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">💾 Backup</button>
         <button data-migrate="${g.vmid}" data-name="${esc(g.name)}" data-node="${esc(g.node)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">↔ Migrasi</button>
+        <button data-netedit="${g.vmid}" data-name="${esc(g.name)}" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs">🌐 IP</button>
       </div>
     </div>`;
   }).join('');
@@ -333,6 +334,55 @@ async function editResource(vmid) {
       });
       toast('Disk diperbesar', 'ok'); closeModal();
     } catch (e) { toast(e.message, 'err'); }
+  };
+}
+
+// ---- Modal edit IP / Gateway ----
+async function editNetwork(vmid, name) {
+  let info;
+  try { info = await api(`/guests/${vmid}/network`); } catch (e) { return toast(e.message, 'err'); }
+  const nets = info.nets || [];
+  if (!nets.length) return toast('Tidak ada interface jaringan ditemukan', 'warn');
+  const isVM = info.type === 'qemu';
+  const opts = nets.map((n, i) => `<option value="${esc(n.iface)}">${esc(n.iface)}${n.bridge ? ` (${esc(n.bridge)})` : ''}</option>`).join('');
+  const first = nets[0];
+  modal(`
+    <div class="p-5">
+      <h2 class="font-semibold text-lg mb-1">🌐 Konfigurasi IP</h2>
+      <p class="text-xs text-slate-500 mb-4">#${vmid} · ${esc(name || '')} <span class="uppercase">${esc(info.type)}</span></p>
+      ${field('Interface', `<select id="n_iface" class="${inputCls}">${opts}</select>`)}
+      <label class="flex items-center gap-2 mb-3 text-sm"><input id="n_dhcp" type="checkbox" class="accent-orange-500" ${first.ip === 'dhcp' ? 'checked' : ''}> Pakai DHCP (otomatis)</label>
+      <div id="n_static">
+        ${field('IP Address (CIDR, mis. 192.168.1.50/24)', `<input id="n_ip" value="${esc(first.ip === 'dhcp' ? '' : first.ip)}" placeholder="192.168.1.50/24" class="${inputCls}">`)}
+        ${field('Gateway', `<input id="n_gw" value="${esc(first.gw)}" placeholder="192.168.1.1" class="${inputCls}">`)}
+      </div>
+      <p class="text-xs text-amber-400/80 mb-4">${isVM ? '⚠ VM: IP diterapkan via cloud-init, perlu reboot & template cloud-init.' : 'ℹ CT: perubahan langsung diterapkan ke config; reboot bila tak aktif.'}</p>
+      <button id="n_save" class="w-full bg-orange-600 hover:bg-orange-500 rounded-md py-2.5 text-sm font-medium">Simpan IP</button>
+      <button onclick="closeModal()" class="w-full mt-2 text-sm text-slate-400 hover:text-white">Batal</button>
+    </div>`);
+
+  const netByIface = Object.fromEntries(nets.map((n) => [n.iface, n]));
+  const syncFields = () => {
+    const n = netByIface[$('#n_iface').value] || first;
+    const dhcp = n.ip === 'dhcp';
+    $('#n_dhcp').checked = dhcp;
+    $('#n_ip').value = dhcp ? '' : n.ip;
+    $('#n_gw').value = n.gw || '';
+    $('#n_static').style.display = dhcp ? 'none' : '';
+  };
+  $('#n_iface').onchange = syncFields;
+  $('#n_dhcp').onchange = () => { $('#n_static').style.display = $('#n_dhcp').checked ? 'none' : ''; };
+  $('#n_static').style.display = first.ip === 'dhcp' ? 'none' : '';
+
+  $('#n_save').onclick = async () => {
+    const btn = $('#n_save'); btn.disabled = true; btn.textContent = 'Menyimpan…';
+    const dhcp = $('#n_dhcp').checked;
+    const body = { iface: $('#n_iface').value, ip: dhcp ? 'dhcp' : $('#n_ip').value.trim(), gw: dhcp ? '' : $('#n_gw').value.trim() };
+    try {
+      const r = await api(`/guests/${vmid}/network`, { method: 'PUT', body: JSON.stringify(body) });
+      toast(r.note || 'IP diperbarui', 'ok'); closeModal();
+      ipCache.delete(String(vmid));
+    } catch (e) { toast(e.message, 'err'); btn.disabled = false; btn.textContent = 'Simpan IP'; }
   };
 }
 
@@ -444,6 +494,7 @@ document.addEventListener('click', (e) => {
   else if (d.snap) Features.openSnapshots(d.snap, d.name);
   else if (d.backup) Features.openBackup(d.backup, d.name);
   else if (d.migrate) Features.openMigrate(d.migrate, d.name, d.node);
+  else if (d.netedit) editNetwork(d.netedit, d.name);
   else if (d.console) Features.openConsole(d.console, d.name, d.ctype);
   else if (d.nodefilter != null) {
     state.nodeFilter = d.nodefilter;
@@ -459,6 +510,51 @@ $('#btnCreateVM').onclick = createVMModal;
 $('#btnCreateCT').onclick = createCTModal;
 $('#search').oninput = (e) => { state.search = e.target.value; renderGuests(); };
 
+// ---------- Auth login gate ----------
+async function initAuth() {
+  let st;
+  try { st = await api('/auth/status'); } catch { st = { loginEnabled: false, authenticated: true }; }
+  if (st.loginEnabled) {
+    $('#btnLogout').classList.remove('hidden');
+    if (!st.authenticated) { showLogin(); return false; }
+  }
+  return true;
+}
+function showLogin() {
+  const ov = $('#loginOverlay');
+  ov.classList.remove('hidden');
+  const err = $('#li_err');
+  $('#loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    err.classList.add('hidden');
+    const btn = $('#li_submit'); btn.disabled = true; btn.textContent = 'Memeriksa…';
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: $('#li_user').value, password: $('#li_pass').value }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Login gagal');
+      ov.classList.add('hidden');
+      startApp();
+    } catch (ex) {
+      err.textContent = ex.message; err.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Masuk';
+    }
+  };
+  $('#li_user').focus();
+}
+async function doLogout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+  location.reload();
+}
+
+function startApp() {
+  document.querySelector('[data-filter="all"]').classList.add('active');
+  connectWS();
+}
+
 // init
-document.querySelector('[data-filter="all"]').classList.add('active');
-connectWS();
+$('#btnLogout').onclick = doLogout;
+$('#btnNodeTerm').onclick = () => Features.openNodeTerminal(state.nodeFilter !== 'all' ? state.nodeFilter : (state.nodes[0]?.node || ''));
+(async () => { if (await initAuth()) startApp(); })();

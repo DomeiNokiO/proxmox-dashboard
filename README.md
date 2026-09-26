@@ -67,6 +67,13 @@ Satu baris, langsung pasang semua dependensi + service (jalankan sebagai root di
 bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/install.sh)
 ```
 
+Installer akan **menanyakan langsung** apakah ingin mengaktifkan login (username & password) — meski dijalankan via `curl | bash`. Password disimpan sebagai **hash scrypt** (bukan plaintext). Bisa juga non-interaktif:
+
+```bash
+DASH_USER=admin DASH_PASS='PasswordKuatAnda' \
+bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/install.sh)
+```
+
 Atau manual:
 
 ```bash
@@ -99,7 +106,7 @@ Ringkas (di host Proxmox):
 
 ```bash
 pveum user add automation@pve
-pveum role add Automational -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Migrate VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit"
+pveum role add Automational -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Migrate VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit Sys.Console SDN.Use"
 pveum aclmod / -user automation@pve -role Automational
 pveum user token add automation@pve automate --privsep 0   # secret muncul SEKALI — catat!
 ```
@@ -127,7 +134,7 @@ Di host Proxmox:
 
 ```bash
 pveum user add automation@pve
-pveum role add DashAdmin -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit SDN.Use"
+pveum role add DashAdmin -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Migrate VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit Sys.Console SDN.Use"
 pveum aclmod / -user automation@pve -role DashAdmin
 pveum user token add automation@pve automate --privsep 0
 # Salin value token -> PVE_TOKEN_SECRET
@@ -143,6 +150,80 @@ pveum user token add automation@pve automate --privsep 0
 - Token dashboard dikirim via header `X-Auth-Token`. Di browser, simpan lewat: `localStorage.setItem('pve_dash_token','...')`.
 - Gunakan **API token** ber-privilege minimal, bukan `root@pam` password.
 - `.env` di-set mode `640` dan dimiliki user service oleh installer.
+
+---
+
+## Login dashboard (opsional tapi disarankan)
+
+Dashboard bisa dijalankan **tanpa login** (terbuka di LAN terisolasi) atau **dengan login** (username + password, hash scrypt + sesi cookie HMAC + rate-limit).
+
+### Cara termudah mengaktifkan / mengganti kredensial — anti-drama
+
+Jika saat install belum sempat mengisi login, atau **belum bisa login**, jalankan (sebagai root di dalam CT):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/DomeiNokiO/proxmox-dashboard/main/scripts/update.sh)
+cd /opt/proxmox-dashboard && npm run set-password
+systemctl restart proxmox-dashboard
+```
+
+`npm run set-password` akan **menanyakan username & password langsung di terminal** (password diketik tersembunyi), lalu meng-hash-nya (scrypt) dan menuliskannya ke `.env`. **Tidak perlu menempel hash panjang** — semua otomatis.
+
+### Ganti password dari dalam dashboard
+
+Setelah login: buka menu **⋮ → 🔑 Ganti Password**. Verifikasi password lama, simpan password baru (hash scrypt), berlaku langsung tanpa restart.
+
+### Menonaktifkan login
+
+Kosongkan `DASHBOARD_USER` & `DASHBOARD_PASSWORD*` di `.env`, lalu `systemctl restart proxmox-dashboard`. Dashboard kembali terbuka.
+
+> **Akses via IP lokal / tunnel VPN (HTTP non-secure)?** Biarkan `TRUST_PROXY=false` (default). Cookie sesi tetap tersimpan karena flag `Secure` tidak dipaksakan di HTTP; enkripsi disediakan oleh tunnel VPN Anda. Set `TRUST_PROXY=true` **hanya** bila di belakang reverse-proxy/Cloudflare Tunnel tepercaya.
+
+---
+
+## Troubleshooting
+
+### Terminal Node error 403 `Sys.Console`
+
+Gejala saat klik **⌨ Terminal Node**:
+
+```
+Terminal gagal dimuat: Proxmox 403 POST /nodes/<node>/termproxy:
+{"message":"Permission check failed (/nodes/<node>, Sys.Console)","data":null}
+```
+
+Penyebab: role token Proxmox belum punya privilege **`Sys.Console`** (diperlukan untuk shell node-level). Perbaiki **di host Proxmox** (ganti `Automational` dengan nama role token Anda):
+
+```bash
+pveum role modify Automational -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Migrate VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit Sys.Console SDN.Use"
+```
+
+Tidak perlu restart Proxmox — coba klik Terminal Node lagi. (Cek role token: `pveum user token permissions <user>@<realm> <tokenname>`.)
+
+### Gagal Create CT / VM — permission denied
+
+Create CT/VM butuh privilege lengkap pada role token. Bila muncul error seperti
+`Permission check failed (... SDN.Use)`, `... Datastore.AllocateSpace`, atau `... VM.Allocate`,
+tambahkan semua privilege berikut sekali jalan **di host Proxmox**:
+
+```bash
+pveum role modify Automational -privs "VM.Allocate VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network VM.Config.Options VM.Config.Cloudinit VM.PowerMgmt VM.Snapshot VM.Clone VM.Migrate VM.Audit VM.Console Datastore.AllocateSpace Datastore.Audit Sys.Audit Sys.Console SDN.Use"
+```
+
+Arti privilege penting untuk create CT:
+- `VM.Allocate` — membuat guest baru.
+- `Datastore.AllocateSpace` — mengalokasikan disk/rootfs di storage.
+- `VM.Config.*` — set CPU/RAM/disk/network/options/cloud-init.
+- `SDN.Use` — **wajib bila bridge yang dipakai adalah SDN** (VNet). Tanpa ini create gagal di tahap network.
+- `Sys.Console` — untuk Terminal Node (lihat di atas).
+
+Bila token dibuat dengan `--privsep 1`, ACL harus dipasang ke **token**-nya, bukan hanya user:
+
+```bash
+pveum aclmod / -token 'automation@pve!automate' -role Automational
+```
+
+Login belum aktif tapi ingin aktif → lihat bagian **Login dashboard** di atas.
 
 ---
 

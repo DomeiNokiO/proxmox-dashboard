@@ -129,27 +129,37 @@ setup_login() {
     return
   fi
 
-  # Mode non-interaktif: ambil dari env DASH_USER / DASH_PASS bila tersedia.
+  # Mode kredensial: env DASH_USER/DASH_PASS (non-interaktif), atau prompt.
+  # PENTING: saat di-pipe (curl|bash) stdin BUKAN TTY, tapi terminal user tetap
+  # bisa diakses lewat /dev/tty. Kita baca dari /dev/tty agar prompt tetap muncul.
   local u p
   if [[ -n "${DASH_USER:-}" && -n "${DASH_PASS:-}" ]]; then
     u="$DASH_USER"; p="$DASH_PASS"
-  elif [[ -t 0 ]]; then
-    echo
-    info "Setup akun login dashboard (agar akses butuh username & password)."
-    read -rp "  Aktifkan login? [Y/n] " ans
+  elif [[ -e /dev/tty ]] && { : >/dev/tty; } 2>/dev/null; then
+    {
+      echo
+      echo "[INFO] Setup akun login dashboard (agar akses butuh username & password)."
+      printf "  Aktifkan login? [Y/n] "
+    } > /dev/tty
+    read -r ans < /dev/tty
     ans="${ans:-Y}"
-    [[ "$ans" =~ ^[Yy] ]] || { warn "Login tidak diaktifkan (dashboard terbuka di LAN)."; return; }
-    read -rp "  Username admin : " u
-    while [[ -z "$u" ]]; do read -rp "  Username admin : " u; done
+    if [[ ! "$ans" =~ ^[Yy] ]]; then
+      warn "Login tidak diaktifkan (dashboard terbuka di LAN)."
+      warn "Aktifkan nanti: cd $APP_DIR && npm run set-password && systemctl restart $SERVICE"
+      return
+    fi
+    printf "  Username admin : " > /dev/tty
+    read -r u < /dev/tty
+    while [[ -z "$u" ]]; do printf "  Username admin : " > /dev/tty; read -r u < /dev/tty; done
     while :; do
-      read -rsp "  Password       : " p; echo
-      read -rsp "  Ulangi password: " p2; echo
+      printf "  Password       : " > /dev/tty; read -rs p  < /dev/tty; echo > /dev/tty
+      printf "  Ulangi password: " > /dev/tty; read -rs p2 < /dev/tty; echo > /dev/tty
       [[ -n "$p" && "$p" == "$p2" ]] && break
       warn "Password kosong atau tidak cocok — ulangi."
     done
   else
-    warn "Tak ada TTY & DASH_USER/DASH_PASS tak diset — lewati setup login."
-    warn "Aktifkan nanti: isi DASHBOARD_USER & DASHBOARD_PASSWORD di $APP_DIR/.env lalu restart."
+    warn "Tak ada terminal interaktif & DASH_USER/DASH_PASS tak diset — lewati setup login."
+    warn "Aktifkan nanti (paling mudah): cd $APP_DIR && npm run set-password && systemctl restart $SERVICE"
     return
   fi
 

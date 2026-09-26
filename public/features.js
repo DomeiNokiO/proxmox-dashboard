@@ -216,7 +216,17 @@ async function openTerminal(vmid, name) {
       </div>
     </div>
     <div id="tm_screen" class="bg-black flex-1 overflow-hidden relative" style="padding:4px"></div>
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0"><b>📐 Pilih</b> = tap awal lalu tap akhir (blok presisi + auto-copy) · <b>🔒 tmux</b> ON = command tetap jalan walau browser ditutup.</div>
+    <div class="flex items-center gap-1 px-2 py-1.5 border-t border-slate-800 shrink-0 overflow-x-auto">
+      <button id="tm_up" title="Command sebelumnya" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm shrink-0">↑</button>
+      <button id="tm_down" title="Command berikutnya" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm shrink-0">↓</button>
+      <button id="tm_left" title="Kiri" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm shrink-0">←</button>
+      <button id="tm_right" title="Kanan" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm shrink-0">→</button>
+      <span class="w-px h-5 bg-slate-700 mx-1 shrink-0"></span>
+      <button id="tm_tab" title="Tab (autocomplete)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs shrink-0">Tab</button>
+      <button id="tm_esc" title="Escape" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs shrink-0">Esc</button>
+      <button id="tm_ctrlc" title="Ctrl+C (batalkan)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-900 text-xs shrink-0">Ctrl+C</button>
+    </div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0"><b>📐 Pilih</b> = tahan & geser untuk blok teks, lepas jari = tersalin · <b>↑↓</b> = histori command.</div>
   </div>`, 'max-w-5xl');
   const DOT = { info: 'bg-amber-400', warn: 'bg-amber-400', ok: 'bg-emerald-400', err: 'bg-red-500' };
   const setState = (t, kind = 'info') => {
@@ -338,62 +348,61 @@ async function openTerminal(vmid, name) {
     term.onSelectionChange(() => { /* seleksi siap; user tap Copy atau otomatis di secure ctx */ });
     $('#tm_copy').onclick = doCopy;
 
-    // ===== Mode Pilih Area (HP): tap awal → tap akhir → blok presisi lintas-baris → auto-copy =====
-    // Mengatasi double-tap xterm yang selalu memblok 1 baris penuh & tak bisa diatur.
-    let selMode = false, anchor = null;
+    // ===== Seleksi teks HP: mode 📐 Pilih dgn TAHAN-GESER (drag), lepas = auto-copy =====
+    // Pakai geometri sederhana (lebar sel = lebar layar / kolom) — tak bergantung API internal xterm.
+    let selMode = false, dragging = false, anchor = null;
     const screen = document.getElementById('tm_screen');
-    // Konversi koordinat sentuh → (col,row) buffer, pakai ukuran sel render xterm
+    const PAD = 4;
     const toCell = (clientX, clientY) => {
-      const core = term._core;
-      const dims = core && core._renderService && core._renderService.dimensions;
-      const cw = dims && (dims.css ? dims.css.cell.width : dims.actualCellWidth);
-      const ch = dims && (dims.css ? dims.css.cell.height : dims.actualCellHeight);
-      if (!cw || !ch) return null;
       const rect = screen.getBoundingClientRect();
-      const x = clientX - rect.left - 4, y = clientY - rect.top - 4; // padding 4px
-      let col = Math.max(0, Math.min(term.cols - 1, Math.floor(x / cw)));
-      let row = Math.max(0, Math.min(term.rows - 1, Math.floor(y / ch)));
+      const cw = (rect.width - PAD * 2) / term.cols;
+      const ch = (rect.height - PAD * 2) / term.rows;
+      if (!cw || !ch) return null;
+      const x = clientX - rect.left - PAD, y = clientY - rect.top - PAD;
+      const col = Math.max(0, Math.min(term.cols - 1, Math.floor(x / cw)));
+      const row = Math.max(0, Math.min(term.rows - 1, Math.floor(y / ch)));
       return { col, row: row + term.buffer.active.viewportY };
     };
+    const applySel = (a, b) => {
+      let s = a, e = b;
+      if (e.row < s.row || (e.row === s.row && e.col < s.col)) { const t = s; s = e; e = t; }
+      const len = (e.row - s.row) * term.cols + (e.col - s.col) + 1;
+      term.select(s.col, s.row, Math.max(1, len));
+    };
     const setSelMode = (on) => {
-      selMode = on; anchor = null;
+      selMode = on; dragging = false; anchor = null;
       const b = $('#tm_sel');
       if (b) b.className = `px-2.5 py-1 rounded-lg ${on ? 'bg-amber-600' : 'bg-slate-800'} hover:bg-slate-700 text-xs`;
       screen.style.cursor = on ? 'crosshair' : '';
-      if (on) { toast('Mode pilih: tap titik AWAL lalu tap titik AKHIR', 'info'); term.clearSelection(); }
+      if (on) { toast('Tahan & geser untuk memblok, lepas = tersalin', 'info'); term.clearSelection(); }
     };
     $('#tm_sel').onclick = () => setSelMode(!selMode);
-    const onTapSelect = async (clientX, clientY) => {
-      const cell = toCell(clientX, clientY);
-      if (!cell) return;
-      if (!anchor) {
-        anchor = cell;
-        term.clearSelection();
-        toast('Titik awal ✓ — tap titik akhir', 'info');
-      } else {
-        // urutkan agar awal < akhir
-        let a = anchor, b = cell;
-        if (b.row < a.row || (b.row === a.row && b.col < a.col)) { const t = a; a = b; b = t; }
-        const len = (b.row - a.row) * term.cols + (b.col - a.col) + 1;
-        term.select(a.col, a.row, Math.max(1, len));
-        const sel = term.getSelection();
-        anchor = null;
-        setSelMode(false);
-        if (sel) { if (await copyText(sel)) toast('Tersalin ✓', 'ok'); else window.prompt('Tahan untuk menyalin:', sel); }
-        else toast('Tak ada teks di area itu', 'warn');
-      }
+    const selStart = (x, y) => { const c = toCell(x, y); if (!c) return; anchor = c; dragging = true; term.clearSelection(); };
+    const selMove = (x, y) => { if (!dragging || !anchor) return; const c = toCell(x, y); if (c) applySel(anchor, c); };
+    const selEnd = async () => {
+      if (!dragging) return; dragging = false;
+      const sel = term.getSelection();
+      setSelMode(false);
+      if (sel && sel.trim()) { if (await copyText(sel)) toast('Tersalin ✓', 'ok'); else window.prompt('Tahan untuk menyalin:', sel); }
+      else toast('Tak ada teks — coba lagi', 'warn');
     };
-    screen.addEventListener('touchstart', (e) => {
-      if (!selMode) return;
-      e.preventDefault(); e.stopPropagation();
-      const t = e.touches[0] || e.changedTouches[0];
-      if (t) onTapSelect(t.clientX, t.clientY);
-    }, { passive: false });
-    screen.addEventListener('mousedown', (e) => {
-      if (!selMode) return;
-      e.preventDefault(); e.stopPropagation();
-      onTapSelect(e.clientX, e.clientY);
-    });
+    screen.addEventListener('touchstart', (e) => { if (!selMode) return; e.preventDefault(); const t = e.touches[0]; if (t) selStart(t.clientX, t.clientY); }, { passive: false });
+    screen.addEventListener('touchmove', (e) => { if (!selMode || !dragging) return; e.preventDefault(); const t = e.touches[0]; if (t) selMove(t.clientX, t.clientY); }, { passive: false });
+    screen.addEventListener('touchend', (e) => { if (!selMode) return; e.preventDefault(); selEnd(); }, { passive: false });
+    screen.addEventListener('mousedown', (e) => { if (!selMode) return; e.preventDefault(); selStart(e.clientX, e.clientY); });
+    screen.addEventListener('mousemove', (e) => { if (!selMode || !dragging) return; selMove(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', () => { if (selMode && dragging) selEnd(); });
+
+    // ===== Tombol navigasi: ↑↓ histori command, ←→ pindah kursor, Tab/Esc =====
+    const sendSeq = (seq) => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('0:' + new TextEncoder().encode(seq).length + ':' + seq); };
+    const navBtn = (id, seq) => { const el = $(id); if (el) el.onclick = () => { sendSeq(seq); const ta = document.querySelector('#tm_screen textarea'); if (ta) ta.focus({ preventScroll: true }); }; };
+    navBtn('#tm_up', '\x1b[A');     // command sebelumnya
+    navBtn('#tm_down', '\x1b[B');   // command berikutnya
+    navBtn('#tm_left', '\x1b[D');
+    navBtn('#tm_right', '\x1b[C');
+    navBtn('#tm_tab', '\t');
+    navBtn('#tm_esc', '\x1b');
+    navBtn('#tm_ctrlc', '\x03');
 
     // Paste
     $('#tm_paste').onclick = async () => {

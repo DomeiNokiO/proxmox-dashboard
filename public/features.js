@@ -194,7 +194,11 @@ async function openConsole(vmid, name) {
   </div>`, 'max-w-5xl');
   const setState = (t) => { const el = $('#vnc_state'); if (el) el.textContent = t; };
   try {
-    const { default: RFB } = await import('https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/lib/rfb.js/+esm');
+    const _m = await import('https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/lib/rfb.js/+esm');
+    // Bundle CJS-transpile: kelas bisa di default, default.default, atau m.RFB
+    const RFB = [_m.default && _m.default.default, _m.default, _m.RFB, _m]
+      .find((c) => typeof c === 'function');
+    if (typeof RFB !== 'function') throw new Error('RFB class tidak ditemukan di modul noVNC');
     setState('meminta tiket…');
     const t = await api(`/guests/${vmid}/vncticket`);
     const token = localStorage.getItem('pve_dash_token') || '';

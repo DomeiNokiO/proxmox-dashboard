@@ -176,27 +176,31 @@ async function openMigrate(vmid, name, curNode) {
 // ---------- 5. VNC Console (noVNC via CDN) — VM & CT, responsif, bisa paste ----------
 async function openConsole(vmid, name) {
   modal(`<div id="vnc_root" class="flex flex-col" style="height:82vh">
-    <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800 shrink-0">
+    <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-800 shrink-0 flex-wrap">
       <div class="flex items-center gap-2 min-w-0">
-        <span class="text-emerald-400">🖥</span>
-        <h2 class="font-semibold truncate">Console #${vmid} <span class="text-xs text-slate-500 font-normal">${esc(name) || ''}</span></h2>
-        <span id="vnc_state" class="text-xs text-slate-400 ml-2 shrink-0">menghubungkan…</span>
+        <span id="vnc_dot" class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" title="menghubungkan…"></span>
+        <h2 class="font-semibold truncate text-sm">#${vmid} <span class="text-xs text-slate-500 font-normal">${esc(name) || ''}</span></h2>
+        <span id="vnc_state" class="text-[11px] text-slate-400 shrink-0">menghubungkan…</span>
       </div>
-      <div class="flex gap-1.5 items-center shrink-0">
-        <button id="vnc_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨ Keyboard</button>
+      <div class="flex gap-1.5 items-center flex-wrap justify-end">
+        <button id="vnc_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨</button>
         <button id="vnc_paste" title="Paste teks ke terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
         <button id="vnc_copy" title="Salin teks terseleksi dari terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📄 Copy</button>
-        <button id="vnc_cad" title="Kirim Ctrl+Alt+Del" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Ctrl+Alt+Del</button>
-        <button id="vnc_fit" title="Fit / actual size" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">⤢ Fit</button>
+        <button id="vnc_cad" title="Kirim Ctrl+Alt+Del" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">C-A-D</button>
+        <button id="vnc_fit" title="Fit / actual size" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">⤢</button>
         <button onclick="closeModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">✕</button>
       </div>
     </div>
     <div id="vnc_screen" class="bg-black flex-1 overflow-hidden relative"></div>
     <input id="vnc_kbd_in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
       class="absolute" style="left:0;top:0;height:1px;width:1px;opacity:0;border:0;padding:0;background:transparent;color:transparent" />
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨ Keyboard</b> untuk mengetik · seleksi teks lalu <b>📄 Copy</b> · <b>📋 Paste</b> kirim clipboard. Sesi tersambung ulang otomatis saat kembali.</div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨</b> untuk mengetik · seleksi teks lalu <b>📄 Copy</b> · <b>📋 Paste</b> kirim clipboard. Sesi tersambung ulang otomatis.</div>
   </div>`, 'max-w-5xl');
-  const setState = (t) => { const el = $('#vnc_state'); if (el) el.textContent = t; };
+  const DOT = { info: 'bg-amber-400', warn: 'bg-amber-400', ok: 'bg-emerald-400', err: 'bg-red-500' };
+  const setState = (t, kind = 'info') => {
+    const el = $('#vnc_state'); if (el) el.textContent = t;
+    const d = $('#vnc_dot'); if (d) { d.className = `inline-block w-2.5 h-2.5 rounded-full shrink-0 ${DOT[kind] || DOT.info}`; d.title = t; }
+  };
   try {
     const _m = await import('https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/lib/rfb.js/+esm');
     // Bundle CJS-transpile: kelas bisa di default, default.default, atau m.RFB
@@ -210,6 +214,7 @@ async function openConsole(vmid, name) {
     let lastClip = '';          // teks clipboard terakhir dari server (untuk tombol Copy)
     let manualClose = false;    // true bila user menutup modal (jangan reconnect)
     let reconnecting = false;
+    let retry = 0;
 
     const buildRFB = async () => {
       // Ambil tiket BARU setiap konek (tiket VNC Proxmox sekali-pakai & cepat kedaluwarsa)
@@ -223,13 +228,13 @@ async function openConsole(vmid, name) {
         credentials: { password: t.ticket },
       });
       r.scaleViewport = true; r.resizeSession = false; r.clipViewport = false;
-      r.addEventListener('connect', () => { setState('terhubung'); reconnecting = false; r.focus(); });
-      // Server mengirim isi clipboard saat teks diseleksi di terminal → simpan untuk Copy
+      r.addEventListener('connect', () => { if (r !== rfb) return; reconnecting = false; retry = 0; setState('terhubung', 'ok'); r.focus(); });
       r.addEventListener('clipboard', (e) => { if (e.detail && typeof e.detail.text === 'string') lastClip = e.detail.text; });
-      r.addEventListener('securityfailure', () => setState('auth gagal'));
+      r.addEventListener('securityfailure', () => { if (r === rfb) setState('auth gagal', 'err'); });
       r.addEventListener('disconnect', (e) => {
-        if (manualClose) return;
-        setState(e.detail?.clean ? 'terputus — menyambung ulang…' : 'koneksi putus — menyambung ulang…');
+        // Hanya RFB AKTIF yang boleh memicu reconnect — cegah loop dari objek lama yang di-teardown
+        if (r !== rfb || manualClose) return;
+        setState('menyambung ulang…', 'warn');
         scheduleReconnect();
       });
       return r;
@@ -238,11 +243,17 @@ async function openConsole(vmid, name) {
     const scheduleReconnect = () => {
       if (manualClose || reconnecting) return;
       reconnecting = true;
+      retry++;
+      const delay = Math.min(800 * retry, 5000); // backoff bertahap, maks 5s
       setTimeout(async () => {
         if (manualClose) return;
-        try { rfb = await buildRFB(); window._rfb = rfb; }
-        catch (err) { reconnecting = false; setState('gagal menyambung — coba lagi 3s'); if (!manualClose) setTimeout(scheduleReconnect, 3000); }
-      }, 800);
+        try {
+          const old = rfb; rfb = null;
+          try { old && old.disconnect(); } catch { /* */ }
+          rfb = await buildRFB(); window._rfb = rfb;
+        }
+        catch (err) { reconnecting = false; setState('gagal — coba lagi…', 'err'); if (!manualClose) setTimeout(scheduleReconnect, 3000); }
+      }, delay);
     };
 
     setState('menghubungkan…');
@@ -275,7 +286,7 @@ async function openConsole(vmid, name) {
     const isDead = () => !rfb || rfb._rfbConnectionState === 'disconnected' || rfb._rfbConnectionState === 'disconnecting';
     const onVisible = () => {
       if (document.visibilityState === 'visible' && !manualClose && !reconnecting && isDead()) {
-        setState('menyambung ulang…'); scheduleReconnect();
+        setState('menyambung ulang…', 'warn'); scheduleReconnect();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -308,11 +319,13 @@ async function openConsole(vmid, name) {
       }
       toast('Teks dikirim ke terminal', 'ok');
     };
-    // Copy: teks yang diseleksi di terminal dikirim server via event 'clipboard' → salin ke clipboard HP
+    // Copy: teks terseleksi di terminal dikirim server VNC via event 'clipboard'
     $('#vnc_copy').onclick = async () => {
-      if (!lastClip) { toast('Seleksi dulu teks di terminal (klik-seret), lalu Copy', 'warn'); return; }
-      try { await navigator.clipboard.writeText(lastClip); toast('Tersalin ke clipboard', 'ok'); }
-      catch { prompt('Salin teks ini:', lastClip); }
+      if (!lastClip) { toast('Belum ada teks. Seleksi teks di layar terminal dulu (klik-seret), baru tap Copy.', 'warn'); return; }
+      try {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(lastClip); toast('Tersalin ke clipboard', 'ok'); }
+        else { window.prompt('Tahan untuk menyalin teks ini:', lastClip); }
+      } catch { window.prompt('Tahan untuk menyalin teks ini:', lastClip); }
     };
     $('#vnc_cad').onclick = () => { rfb.sendCtrlAltDel(); toast('Ctrl+Alt+Del dikirim', 'info'); };
     let fit = true;

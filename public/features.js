@@ -173,10 +173,27 @@ async function openMigrate(vmid, name, curNode) {
   };
 }
 
-// ---------- 5. Console — CT: terminal xterm.js (persist tmux, copy nativ) · VM: noVNC ----------
+// ---------- 5. Console — CT: pilih xterm (terminal) atau noVNC · VM: noVNC ----------
 async function openConsole(vmid, name, ctype) {
-  if (ctype === 'lxc') return openTerminal(vmid, name);
-  return openVNC(vmid, name);
+  if (ctype !== 'lxc') return openVNC(vmid, name);
+  // CT: tampilkan pemilih mode (ingat pilihan terakhir)
+  const last = localStorage.getItem('pve_dash_ctmode') || 'xterm';
+  modal(`<div class="p-5">
+    <h2 class="font-semibold text-base mb-1">Console #${vmid} <span class="text-slate-500 font-normal text-sm">${esc(name) || ''}</span></h2>
+    <p class="text-xs text-slate-400 mb-4">Pilih mode konsol untuk CT ini.</p>
+    <div class="grid grid-cols-1 gap-2.5">
+      <button id="cm_xterm" class="text-left px-4 py-3 rounded-xl bg-slate-800 hover:bg-emerald-800 border border-slate-700 transition">
+        <div class="font-medium text-sm">⌨ Terminal (xterm)${last === 'xterm' ? ' <span class="text-[10px] text-emerald-400">• terakhir</span>' : ''}</div>
+        <div class="text-[11px] text-slate-400 mt-0.5">Ringan, teks bisa di-copy, tmux persist. Disarankan.</div>
+      </button>
+      <button id="cm_vnc" class="text-left px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 transition">
+        <div class="font-medium text-sm">🖥 noVNC (grafis)${last === 'vnc' ? ' <span class="text-[10px] text-emerald-400">• terakhir</span>' : ''}</div>
+        <div class="text-[11px] text-slate-400 mt-0.5">Tampilan layar penuh seperti konsol Proxmox asli.</div>
+      </button>
+    </div>
+  </div>`, 'max-w-sm');
+  $('#cm_xterm').onclick = () => { localStorage.setItem('pve_dash_ctmode', 'xterm'); openTerminal(vmid, name); };
+  $('#cm_vnc').onclick = () => { localStorage.setItem('pve_dash_ctmode', 'vnc'); openVNC(vmid, name); };
 }
 
 // 5a. Terminal xterm.js untuk CT/LXC — ringan, teks bisa diseleksi/copy, tmux = persist
@@ -292,14 +309,30 @@ async function openTerminal(vmid, name) {
     setState('menghubungkan…');
     await connect();
 
-    // ===== Copy: seleksi = otomatis ke clipboard (fallback prompt di HTTP) =====
+    // ===== Copy handal (HP + HTTP): clipboard API → fallback textarea execCommand =====
+    const copyText = async (txt) => {
+      try {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(txt); return true; }
+      } catch { /* lanjut fallback */ }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0';
+        ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select(); ta.setSelectionRange(0, txt.length); // iOS butuh range
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) return true;
+      } catch { /* */ }
+      return false;
+    };
     const doCopy = async () => {
       const sel = term.getSelection();
-      if (!sel) { toast('Seleksi teks di terminal dulu (klik-seret)', 'warn'); return; }
-      try {
-        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(sel); toast('Tersalin', 'ok'); }
-        else window.prompt('Tahan untuk menyalin:', sel);
-      } catch { window.prompt('Tahan untuk menyalin:', sel); }
+      if (!sel) { toast('Seleksi teks di terminal dulu (tahan lalu geser)', 'warn'); return; }
+      if (await copyText(sel)) toast('Tersalin ✓', 'ok');
+      else window.prompt('Tahan teks untuk menyalin:', sel);
     };
     term.onSelectionChange(() => { /* seleksi siap; user tap Copy atau otomatis di secure ctx */ });
     $('#tm_copy').onclick = doCopy;
@@ -503,12 +536,21 @@ async function openVNC(vmid, name) {
       toast('Teks dikirim ke terminal', 'ok');
     };
     // Copy: teks terseleksi di terminal dikirim server VNC via event 'clipboard'
+    const vncCopyText = async (txt) => {
+      try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(txt); return true; } } catch { /* */ }
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = txt; ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+        document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, txt.length);
+        const ok = document.execCommand('copy'); document.body.removeChild(ta); if (ok) return true;
+      } catch { /* */ }
+      return false;
+    };
     $('#vnc_copy').onclick = async () => {
       if (!lastClip) { toast('Belum ada teks. Seleksi teks di layar terminal dulu (klik-seret), baru tap Copy.', 'warn'); return; }
-      try {
-        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(lastClip); toast('Tersalin ke clipboard', 'ok'); }
-        else { window.prompt('Tahan untuk menyalin teks ini:', lastClip); }
-      } catch { window.prompt('Tahan untuk menyalin teks ini:', lastClip); }
+      if (await vncCopyText(lastClip)) toast('Tersalin ✓', 'ok');
+      else window.prompt('Tahan untuk menyalin teks ini:', lastClip);
     };
     $('#vnc_cad').onclick = () => { rfb.sendCtrlAltDel(); toast('Ctrl+Alt+Del dikirim', 'info'); };
     let fit = true;

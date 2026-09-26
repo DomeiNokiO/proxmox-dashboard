@@ -191,8 +191,8 @@ async function openConsole(vmid, name) {
       </div>
     </div>
     <div id="vnc_screen" class="bg-black flex-1 overflow-hidden relative"></div>
-    <input id="vnc_kbd_in" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-      class="absolute" style="left:0;bottom:0;height:1px;width:1px;opacity:0;border:0;padding:0;background:transparent;color:transparent" />
+    <input id="vnc_kbd_in" type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+      class="absolute" style="left:0;top:0;height:1px;width:1px;opacity:0;border:0;padding:0;background:transparent;color:transparent" />
     <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨ Keyboard</b> untuk mengetik dari HP · <b>Paste</b> mengirim teks clipboard.</div>
   </div>`, 'max-w-5xl');
   const setState = (t) => { const el = $('#vnc_state'); if (el) el.textContent = t; };
@@ -227,9 +227,13 @@ async function openConsole(vmid, name) {
     const card = root && root.parentElement; // container max-w-5xl
     if (card) { card.classList.remove('max-h-[90vh]'); }
     const vv = window.visualViewport;
+    document.body.style.overflow = 'hidden';
     const fitToViewport = () => {
       const h = vv ? vv.height : window.innerHeight;
-      root.style.height = Math.max(240, Math.round(h - (vv ? vv.offsetTop : 0) - 4)) + 'px';
+      const top = vv ? vv.offsetTop : 0;
+      // Pin overlay ke visual viewport (mengikuti keyboard), bukan layout viewport
+      if (bg) { bg.style.position = 'fixed'; bg.style.top = top + 'px'; bg.style.left = '0'; bg.style.right = '0'; bg.style.height = h + 'px'; bg.style.bottom = 'auto'; }
+      root.style.height = Math.max(220, Math.round(h - 4)) + 'px';
       // Paksa noVNC hitung ulang skala terhadap container baru
       if (rfb) { try { rfb.scaleViewport = rfb.scaleViewport; } catch { /* */ } }
     };
@@ -240,6 +244,7 @@ async function openConsole(vmid, name) {
     const modalRoot = document.getElementById('modalRoot');
     const mo = new MutationObserver(() => {
       if (!document.getElementById('vnc_root')) {
+        document.body.style.overflow = '';
         if (vv) { vv.removeEventListener('resize', fitToViewport); vv.removeEventListener('scroll', fitToViewport); }
         else window.removeEventListener('resize', fitToViewport);
         try { rfb.disconnect(); } catch { /* */ }
@@ -283,7 +288,7 @@ async function openConsole(vmid, name) {
       const ks = SPECIAL[e.key];
       if (ks) { e.preventDefault(); sendKey(0, ks); }
     });
-    const showKbd = () => { kin.focus(); kin.click(); };
+    const showKbd = () => { kin.focus({ preventScroll: true }); };
     $('#vnc_kbd').onclick = showKbd;
     // Tap pada layar juga memunculkan keyboard (selain mengirim klik mouse ke VNC)
     $('#vnc_screen').addEventListener('touchend', showKbd, { passive: true });

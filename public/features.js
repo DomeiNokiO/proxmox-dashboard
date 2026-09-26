@@ -194,7 +194,7 @@ async function openConsole(vmid, name) {
   </div>`, 'max-w-5xl');
   const setState = (t) => { const el = $('#vnc_state'); if (el) el.textContent = t; };
   try {
-    const { default: RFB } = await import('https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/lib/rfb.js');
+    const { default: RFB } = await import('https://cdn.jsdelivr.net/npm/@novnc/novnc@1.5.0/lib/rfb.js/+esm');
     setState('meminta tiket…');
     const t = await api(`/guests/${vmid}/vncticket`);
     const token = localStorage.getItem('pve_dash_token') || '';

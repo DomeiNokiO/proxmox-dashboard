@@ -19,8 +19,19 @@ Backend **Node.js + Express + WebSocket**, frontend **Vanilla JS + Tailwind (zer
 - **Backup** — jalankan vzdump ke storage pilihan (mode snapshot/suspend/stop, kompresi zstd/gzip/lzo).
 - **Migrasi** — pindahkan guest antar node (online/offline) langsung dari UI.
 - **Console VNC** — akses layar VM interaktif via noVNC, di-proxy aman lewat server (ticket tak bocor ke Proxmox langsung).
+- **Terminal shell** — xterm.js (guest & node Proxmox), responsif untuk HP, mode pilih-teks 1 jari & copy berlapis.
+- **Tema Orange/Hijau** — toggle 🎨 di menu ⋮ (Orange default, Hijau opsional; tersimpan di browser). Lihat [`docs/UI-THEMING.md`](docs/UI-THEMING.md).
+- **UI mobile-friendly** — aksi utama tetap terlihat, tombol sekunder di menu dropdown ⋮.
+- **Login aman (opsional)** — scrypt hash, sesi cookie HMAC + `SameSite=Strict`, rate-limit; kelola via `npm run set-password` atau menu 🔑. Lihat [`docs/WORKFLOW.md`](docs/WORKFLOW.md) §4.
 - **Filter & cari** — per tipe (VM/CT), status (running/stopped), atau nama/VMID.
 - **Aman** — token API Proxmox (bukan password), opsi proteksi token dashboard, systemd hardening.
+
+---
+
+## Dokumentasi
+
+- [`docs/WORKFLOW.md`](docs/WORKFLOW.md) — alur dev, uji, deploy, keamanan login, troubleshooting.
+- [`docs/UI-THEMING.md`](docs/UI-THEMING.md) — sistem tema (Orange/Hijau), mobile, cara tambah tema, fallback.
 
 ---
 

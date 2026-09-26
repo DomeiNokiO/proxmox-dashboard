@@ -519,8 +519,8 @@ async function initAuth() {
   let st;
   try { st = await api('/auth/status'); } catch { st = { loginEnabled: false, authenticated: true }; }
   if (st.loginEnabled) {
-    $('#btnLogout').classList.remove('hidden');
-    $('#btnChangePw').classList.remove('hidden');
+    $('#mi_logout').classList.remove('hidden');
+    $('#mi_changepw').classList.remove('hidden');
     if (!st.authenticated) { showLogin(); return false; }
   }
   return true;
@@ -604,8 +604,47 @@ function startApp() {
   connectWS();
 }
 
+// ---------- Tema (orange default / green opsional) ----------
+function applyTheme(t) {
+  if (t === 'green') document.documentElement.setAttribute('data-theme', 'green');
+  else document.documentElement.removeAttribute('data-theme');
+  const lbl = $('#mi_theme_label');
+  if (lbl) lbl.textContent = t === 'green' ? 'Tema: Hijau' : 'Tema: Orange';
+}
+function initTheme() {
+  applyTheme(localStorage.getItem('pve_dash_theme') || 'orange');
+}
+function toggleTheme() {
+  const next = (localStorage.getItem('pve_dash_theme') || 'orange') === 'green' ? 'orange' : 'green';
+  localStorage.setItem('pve_dash_theme', next);
+  applyTheme(next);
+}
+
+// ---------- Menu dropdown (⋮) ----------
+function closeMenu() {
+  $('#menuDrop').classList.add('hidden');
+  $('#btnMenu').setAttribute('aria-expanded', 'false');
+}
+function initMenu() {
+  const drop = $('#menuDrop'), btn = $('#btnMenu');
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const open = drop.classList.toggle('hidden');
+    btn.setAttribute('aria-expanded', String(!open));
+  };
+  document.addEventListener('click', (e) => {
+    if (!drop.classList.contains('hidden') && !drop.contains(e.target) && e.target !== btn) closeMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  $('#mi_theme').onclick = toggleTheme;
+  $('#mi_node').onclick = () => { closeMenu(); Features.openNodeTerminal(state.nodeFilter !== 'all' ? state.nodeFilter : (state.nodes[0]?.node || '')); };
+  $('#mi_changepw').onclick = () => { closeMenu(); changePasswordModal(); };
+  $('#mi_logout').onclick = () => { closeMenu(); doLogout(); };
+}
+
 // init
-$('#btnLogout').onclick = doLogout;
-$('#btnChangePw').onclick = changePasswordModal;
-$('#btnNodeTerm').onclick = () => Features.openNodeTerminal(state.nodeFilter !== 'all' ? state.nodeFilter : (state.nodes[0]?.node || ''));
+$('#btnCreateVM').onclick = createVMModal;
+$('#btnCreateCT').onclick = createCTModal;
+initTheme();
+initMenu();
 (async () => { if (await initAuth()) startApp(); })();

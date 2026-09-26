@@ -13,3 +13,46 @@
 /* scrollbar tipis */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+
+/* ============================================================
+   TEMA HIJAU (opsional) — aktif hanya saat <html data-theme="green">.
+   Tanpa atribut = tema Orange default (FALLBACK, tak berubah).
+   Strategi: remap utility warna yang SUDAH dipakai di HTML/JS ke
+   emerald (primary, dulu orange) & teal (CT, dulu sky). Tak perlu
+   mengubah satu pun class di JS → minim risiko regresi.
+   ============================================================ */
+html[data-theme="green"] {
+  /* --- primary: orange -> emerald --- */
+  --p-400: #34d399; --p-500: #10b981; --p-600: #059669;
+  /* --- secondary (CT): sky -> teal --- */
+  --s-400: #2dd4bf; --s-500: #14b8a6; --s-600: #0d9488;
+}
+/* solid bg */
+html[data-theme="green"] .bg-orange-600 { background-color: var(--p-600) !important; }
+html[data-theme="green"] .bg-orange-500 { background-color: var(--p-500) !important; }
+html[data-theme="green"] .bg-sky-600 { background-color: var(--s-600) !important; }
+html[data-theme="green"] .bg-sky-500 { background-color: var(--s-500) !important; }
+/* bg dgn opacity */
+html[data-theme="green"] .bg-orange-500\/10 { background-color: rgb(16 185 129 / 0.10) !important; }
+html[data-theme="green"] .bg-orange-500\/20 { background-color: rgb(16 185 129 / 0.20) !important; }
+html[data-theme="green"] .bg-sky-500\/10 { background-color: rgb(20 184 166 / 0.10) !important; }
+/* text */
+html[data-theme="green"] .text-orange-400 { color: var(--p-400) !important; }
+html[data-theme="green"] .text-sky-400 { color: var(--s-400) !important; }
+/* hover bg */
+html[data-theme="green"] .hover\:bg-orange-500:hover { background-color: var(--p-500) !important; }
+html[data-theme="green"] .hover\:bg-sky-500:hover { background-color: var(--s-500) !important; }
+/* focus border */
+html[data-theme="green"] .focus\:border-orange-500:focus { border-color: var(--p-500) !important; }
+html[data-theme="green"] .focus\:border-sky-500:focus { border-color: var(--s-500) !important; }
+/* filter-btn aktif ikut tema hijau */
+html[data-theme="green"] .filter-btn.active { background-color: var(--p-600) !important; }
+
+/* ============================================================
+   Responsif mobile — rapikan header & filter di layar sempit.
+   ============================================================ */
+@media (max-width: 640px) {
+  header h1 { font-size: 0.95rem; }
+  #nodeLabel { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #search { width: 100% !important; }
+}

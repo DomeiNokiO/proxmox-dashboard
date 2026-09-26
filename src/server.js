@@ -25,8 +25,15 @@ const loginLimiter = new LoginRateLimiter();
 // Hash password: pakai hash siap-pakai bila ada, else hash plaintext dari .env sekali saat boot.
 let storedHash = config.auth.passwordHash || (config.auth.password ? hashPassword(config.auth.password) : '');
 
+const TRUST_PROXY = String(process.env.TRUST_PROXY || '').toLowerCase() === 'true';
 function clientIp(req) {
-  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
+  // Hanya percaya X-Forwarded-For bila di belakang proxy tepercaya (mis. Cloudflare Tunnel).
+  // Tanpa itu, XFF bisa dipalsukan untuk mengelabui rate-limit → pakai IP soket langsung.
+  if (TRUST_PROXY) {
+    const xff = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (xff) return xff;
+  }
+  return req.socket?.remoteAddress || 'unknown';
 }
 function hasValidSession(req) {
   const tok = parseCookies(req)[SESSION_COOKIE];
@@ -66,7 +73,7 @@ app.use((_req, res, next) => {
 });
 
 // ===== Endpoint login/logout (sebelum authGuard) =====
-const secureCookie = (req) => (req.headers['x-forwarded-proto'] === 'https') || req.secure;
+const secureCookie = (req) => (TRUST_PROXY && req.headers['x-forwarded-proto'] === 'https') || req.secure;
 function setSessionCookie(req, res, token) {
   const parts = [
     `${SESSION_COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=43200',
@@ -124,8 +131,14 @@ function updateEnvVar(key, value) {
 app.post('/api/auth/change-password', (req, res) => {
   if (!loginEnabled) return res.status(400).json({ error: 'Login tidak aktif' });
   if (!hasValidSession(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const ip = clientIp(req);
+  const gate = loginLimiter.check(ip);
+  if (!gate.allowed) {
+    return res.status(429).json({ error: `Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(gate.retryMs / 60000)} menit.` });
+  }
   const { current, next: nextPass } = req.body || {};
   if (!verifyPassword(current || '', storedHash)) {
+    loginLimiter.fail(ip);
     return res.status(401).json({ error: 'Password lama salah' });
   }
   if (!nextPass || String(nextPass).length < 8) {
@@ -137,6 +150,7 @@ app.post('/api/auth/change-password', (req, res) => {
   } catch (e) {
     return res.status(500).json({ error: `Gagal menyimpan ke .env: ${e.message}` });
   }
+  loginLimiter.reset(ip);
   storedHash = newHash; // berlaku langsung tanpa restart
   res.json({ ok: true });
 });

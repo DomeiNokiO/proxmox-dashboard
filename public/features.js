@@ -183,14 +183,17 @@ async function openConsole(vmid, name) {
         <span id="vnc_state" class="text-xs text-slate-400 ml-2 shrink-0">menghubungkan…</span>
       </div>
       <div class="flex gap-1.5 items-center shrink-0">
+        <button id="vnc_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨ Keyboard</button>
         <button id="vnc_paste" title="Paste teks ke terminal" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
         <button id="vnc_cad" title="Kirim Ctrl+Alt+Del" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">Ctrl+Alt+Del</button>
         <button id="vnc_fit" title="Fit / actual size" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">⤢ Fit</button>
         <button onclick="closeModal()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">✕</button>
       </div>
     </div>
-    <div id="vnc_screen" class="bg-black flex-1 overflow-hidden"></div>
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Klik layar untuk fokus keyboard. Tombol <b>Paste</b> mengetikkan teks dari clipboard ke terminal.</div>
+    <div id="vnc_screen" class="bg-black flex-1 overflow-hidden relative"></div>
+    <input id="vnc_kbd_in" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+      class="absolute" style="left:0;bottom:0;height:1px;width:1px;opacity:0;border:0;padding:0;background:transparent;color:transparent" />
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Tap <b>⌨ Keyboard</b> untuk mengetik dari HP · <b>Paste</b> mengirim teks clipboard.</div>
   </div>`, 'max-w-5xl');
   const setState = (t) => { const el = $('#vnc_state'); if (el) el.textContent = t; };
   try {
@@ -233,6 +236,28 @@ async function openConsole(vmid, name) {
     $('#vnc_cad').onclick = () => { rfb.sendCtrlAltDel(); toast('Ctrl+Alt+Del dikirim', 'info'); };
     let fit = true;
     $('#vnc_fit').onclick = () => { fit = !fit; rfb.scaleViewport = fit; rfb.clipViewport = !fit; $('#vnc_fit').textContent = fit ? '⤢ Fit' : '⤡ 1:1'; };
+
+    // ===== Jembatan keyboard mobile: input tersembunyi memicu soft-keyboard =====
+    const kin = document.getElementById('vnc_kbd_in');
+    const sendKey = (code, keysym) => { rfb.sendKey(keysym || code, null, true); rfb.sendKey(keysym || code, null, false); };
+    // Ketik karakter biasa via event 'input' (andal utk soft-keyboard yg tak kirim keydown per-char)
+    kin.addEventListener('input', () => {
+      const v = kin.value;
+      for (const ch of v) sendKey(ch.codePointAt(0));
+      kin.value = '';
+    });
+    // Tombol khusus (Enter, Backspace, Tab, panah, Esc) via keydown
+    const SPECIAL = { Enter: 0xff0d, Backspace: 0xff08, Tab: 0xff09, Escape: 0xff1b,
+      ArrowUp: 0xff52, ArrowDown: 0xff54, ArrowLeft: 0xff51, ArrowRight: 0xff53,
+      Home: 0xff50, End: 0xff57, Delete: 0xffff };
+    kin.addEventListener('keydown', (e) => {
+      const ks = SPECIAL[e.key];
+      if (ks) { e.preventDefault(); sendKey(0, ks); }
+    });
+    const showKbd = () => { kin.focus(); kin.click(); };
+    $('#vnc_kbd').onclick = showKbd;
+    // Tap pada layar juga memunculkan keyboard (selain mengirim klik mouse ke VNC)
+    $('#vnc_screen').addEventListener('touchend', showKbd, { passive: true });
   } catch (e) {
     setState('error: ' + e.message);
     toast('Console gagal dimuat: ' + e.message, 'err');

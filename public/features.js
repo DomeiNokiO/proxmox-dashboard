@@ -399,6 +399,11 @@ async function openTerminal(vmid, name) {
       const b = $('#tm_sel');
       if (b) b.className = `px-2.5 py-1 rounded-lg ${on ? 'bg-amber-600' : 'bg-slate-800'} hover:bg-slate-700 text-xs`;
       screen.style.cursor = on ? 'crosshair' : '';
+      screen.style.touchAction = on ? 'none' : '';  // 1-jari = seleksi, bukan scroll xterm
+      const vp = screen.querySelector('.xterm-viewport');
+      if (vp) vp.style.touchAction = on ? 'none' : '';
+      const scr = screen.querySelector('.xterm-screen');
+      if (scr) scr.style.touchAction = on ? 'none' : '';
       if (on) { toast('Tahan & geser untuk memblok, lepas = tersalin', 'info'); term.clearSelection(); }
     };
     $('#tm_sel').onclick = () => setSelMode(!selMode);
@@ -411,9 +416,9 @@ async function openTerminal(vmid, name) {
       if (sel && sel.trim()) { if (await copyText(sel)) toast('Tersalin ✓', 'ok'); else showCopyFallback(sel); }
       else toast('Tak ada teks — coba lagi', 'warn');
     };
-    screen.addEventListener('touchstart', (e) => { if (!selMode) return; e.preventDefault(); const t = e.touches[0]; if (t) selStart(t.clientX, t.clientY); }, { passive: false });
-    screen.addEventListener('touchmove', (e) => { if (!selMode || !dragging) return; e.preventDefault(); const t = e.touches[0]; if (t) selMove(t.clientX, t.clientY); }, { passive: false });
-    screen.addEventListener('touchend', (e) => { if (!selMode) return; e.preventDefault(); selEnd(); }, { passive: false });
+    screen.addEventListener('touchstart', (e) => { if (!selMode) return; e.preventDefault(); e.stopPropagation(); const t = e.touches[0]; if (t) selStart(t.clientX, t.clientY); }, { passive: false, capture: true });
+    screen.addEventListener('touchmove', (e) => { if (!selMode || !dragging) return; e.preventDefault(); e.stopPropagation(); const t = e.touches[0]; if (t) selMove(t.clientX, t.clientY); }, { passive: false, capture: true });
+    screen.addEventListener('touchend', (e) => { if (!selMode) return; e.preventDefault(); e.stopPropagation(); selEnd(); }, { passive: false, capture: true });
     screen.addEventListener('mousedown', (e) => { if (!selMode) return; e.preventDefault(); selStart(e.clientX, e.clientY); });
     screen.addEventListener('mousemove', (e) => { if (!selMode || !dragging) return; selMove(e.clientX, e.clientY); });
     window.addEventListener('mouseup', () => { if (selMode && dragging) selEnd(); });

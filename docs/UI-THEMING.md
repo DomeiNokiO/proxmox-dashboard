@@ -8,10 +8,11 @@ tanpa merusak UI yang sudah berjalan.
 
 ## 1. Ringkasan
 
-- **Tema default = Orange** (tidak berubah dari versi sebelumnya). Ini juga **fallback**:
-  bila fitur tema gagal / localStorage kosong, UI tampil Orange seperti semula.
-- **Tema Hijau = opsional**, diaktifkan lewat toggle 🎨 di menu ⋮. Pilihan disimpan di
-  `localStorage` (`pve_dash_theme`) sehingga bertahan lintas kunjungan & lintas device tidak.
+- **Tema default = Orange (gelap)** — tidak berubah dari versi sebelumnya. Ini juga **fallback**:
+  bila fitur tema gagal / localStorage kosong, UI tampil Orange gelap seperti semula.
+- **Tema Hijau Cerah = opsional & TERANG** (latar putih, teks gelap, aksen hijau), diaktifkan
+  lewat toggle 🎨 di menu ⋮. Pilihan disimpan di `localStorage` (`pve_dash_theme`).
+  Layar terminal/VNC (`bg-black`) & teks toast tetap seperti semula.
 - **Mobile**: tombol aksi utama (`+ VM`, `+ CT`) tetap terlihat; tombol sekunder
   (Terminal Node, Ganti Password, Keluar, Tema) dipindah ke **menu dropdown ⋮**.
 

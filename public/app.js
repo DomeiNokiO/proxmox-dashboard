@@ -520,6 +520,7 @@ async function initAuth() {
   try { st = await api('/auth/status'); } catch { st = { loginEnabled: false, authenticated: true }; }
   if (st.loginEnabled) {
     $('#btnLogout').classList.remove('hidden');
+    $('#btnChangePw').classList.remove('hidden');
     if (!st.authenticated) { showLogin(); return false; }
   }
   return true;
@@ -553,6 +554,51 @@ async function doLogout() {
   location.reload();
 }
 
+function changePasswordModal() {
+  modal(`
+    <div class="p-5">
+      <h3 class="text-lg font-semibold mb-1">Ganti Password Login</h3>
+      <p class="text-slate-400 text-sm mb-4">Password baru disimpan sebagai hash (scrypt) di server. Berlaku langsung tanpa restart.</p>
+      <form id="cpForm" class="space-y-3">
+        <input id="cp_cur" type="password" autocomplete="current-password" placeholder="Password lama"
+          class="w-full px-3 py-2 rounded-md bg-slate-800 border border-slate-700 focus:border-sky-500 outline-none">
+        <input id="cp_new" type="password" autocomplete="new-password" placeholder="Password baru (min. 8 karakter)"
+          class="w-full px-3 py-2 rounded-md bg-slate-800 border border-slate-700 focus:border-sky-500 outline-none">
+        <input id="cp_new2" type="password" autocomplete="new-password" placeholder="Ulangi password baru"
+          class="w-full px-3 py-2 rounded-md bg-slate-800 border border-slate-700 focus:border-sky-500 outline-none">
+        <p id="cp_err" class="hidden text-sm text-red-400"></p>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" onclick="closeModal()" class="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-sm">Batal</button>
+          <button id="cp_submit" type="submit" class="px-3 py-1.5 rounded-md bg-sky-600 hover:bg-sky-500 text-sm font-medium">Simpan</button>
+        </div>
+      </form>
+    </div>`);
+  const err = $('#cp_err');
+  $('#cpForm').onsubmit = async (e) => {
+    e.preventDefault();
+    err.classList.add('hidden');
+    const cur = $('#cp_cur').value, np = $('#cp_new').value, np2 = $('#cp_new2').value;
+    if (np.length < 8) { err.textContent = 'Password baru minimal 8 karakter'; err.classList.remove('hidden'); return; }
+    if (np !== np2) { err.textContent = 'Konfirmasi password tidak cocok'; err.classList.remove('hidden'); return; }
+    const btn = $('#cp_submit'); btn.disabled = true; btn.textContent = 'Menyimpan…';
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current: cur, next: np }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Gagal mengganti password');
+      closeModal();
+      toast('Password berhasil diganti', 'ok');
+    } catch (ex) {
+      err.textContent = ex.message; err.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Simpan';
+    }
+  };
+  $('#cp_cur').focus();
+}
+window.changePasswordModal = changePasswordModal;
+
 function startApp() {
   document.querySelector('[data-filter="all"]').classList.add('active');
   connectWS();
@@ -560,5 +606,6 @@ function startApp() {
 
 // init
 $('#btnLogout').onclick = doLogout;
+$('#btnChangePw').onclick = changePasswordModal;
 $('#btnNodeTerm').onclick = () => Features.openNodeTerminal(state.nodeFilter !== 'all' ? state.nodeFilter : (state.nodes[0]?.node || ''));
 (async () => { if (await initAuth()) startApp(); })();

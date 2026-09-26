@@ -2,6 +2,7 @@
 import express from 'express';
 import http from 'node:http';
 import path from 'node:path';
+import fs from 'node:fs';
 import https from 'node:https';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +23,7 @@ const loginEnabled = !!(config.auth.username && (config.auth.password || config.
 const sessions = new SessionManager(config.auth.sessionSecret || loadSessionSecret());
 const loginLimiter = new LoginRateLimiter();
 // Hash password: pakai hash siap-pakai bila ada, else hash plaintext dari .env sekali saat boot.
-const storedHash = config.auth.passwordHash || (config.auth.password ? hashPassword(config.auth.password) : '');
+let storedHash = config.auth.passwordHash || (config.auth.password ? hashPassword(config.auth.password) : '');
 
 function clientIp(req) {
   return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || 'unknown';
@@ -101,6 +102,42 @@ app.post('/api/auth/logout', (req, res) => {
   const parts = [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
   if (secureCookie(req)) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
+  res.json({ ok: true });
+});
+
+// Ganti password login (butuh sesi aktif + verifikasi password lama). Persist ke .env sebagai hash.
+function updateEnvVar(key, value) {
+  const envPath = path.join(__dirname, '..', '.env');
+  let lines = [];
+  try { lines = fs.readFileSync(envPath, 'utf8').split('\n'); } catch { /* .env belum ada */ }
+  let found = false;
+  lines = lines.map((l) => {
+    if (new RegExp(`^${key}=`).test(l)) { found = true; return `${key}=${value}`; }
+    return l;
+  });
+  // Hapus DASHBOARD_PASSWORD plaintext bila kita menulis hash (hindari konflik/hash ganda).
+  if (key === 'DASHBOARD_PASSWORD_HASH') lines = lines.filter((l) => !/^DASHBOARD_PASSWORD=/.test(l));
+  if (!found) lines.push(`${key}=${value}`);
+  fs.writeFileSync(envPath, lines.join('\n'), { mode: 0o640 });
+}
+
+app.post('/api/auth/change-password', (req, res) => {
+  if (!loginEnabled) return res.status(400).json({ error: 'Login tidak aktif' });
+  if (!hasValidSession(req)) return res.status(401).json({ error: 'Unauthorized' });
+  const { current, next: nextPass } = req.body || {};
+  if (!verifyPassword(current || '', storedHash)) {
+    return res.status(401).json({ error: 'Password lama salah' });
+  }
+  if (!nextPass || String(nextPass).length < 8) {
+    return res.status(400).json({ error: 'Password baru minimal 8 karakter' });
+  }
+  const newHash = hashPassword(String(nextPass));
+  try {
+    updateEnvVar('DASHBOARD_PASSWORD_HASH', newHash);
+  } catch (e) {
+    return res.status(500).json({ error: `Gagal menyimpan ke .env: ${e.message}` });
+  }
+  storedHash = newHash; // berlaku langsung tanpa restart
   res.json({ ok: true });
 });
 

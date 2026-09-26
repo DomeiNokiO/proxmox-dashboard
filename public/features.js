@@ -208,6 +208,7 @@ async function openTerminal(vmid, name) {
       </div>
       <div class="flex gap-1.5 items-center flex-wrap justify-end">
         <button id="tm_kbd" title="Tampilkan keyboard" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-xs">⌨</button>
+        <button id="tm_sel" title="Mode pilih: tap awal lalu tap akhir" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📐 Pilih</button>
         <button id="tm_paste" title="Paste dari clipboard" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📋 Paste</button>
         <button id="tm_copy" title="Salin teks terseleksi" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs">📄 Copy</button>
         <button id="tm_tmux" title="Sesi persist (tmux)" class="px-2.5 py-1 rounded-lg ${useTmux ? 'bg-emerald-700' : 'bg-slate-800'} hover:bg-slate-700 text-xs">🔒 tmux</button>
@@ -215,7 +216,7 @@ async function openTerminal(vmid, name) {
       </div>
     </div>
     <div id="tm_screen" class="bg-black flex-1 overflow-hidden relative" style="padding:4px"></div>
-    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0">Seleksi teks = auto-copy · <b>🔒 tmux</b> ON = command tetap jalan walau browser ditutup, sambung lagi lanjut di tempat terakhir.</div>
+    <div class="px-4 py-1.5 text-[11px] text-slate-500 border-t border-slate-800 shrink-0"><b>📐 Pilih</b> = tap awal lalu tap akhir (blok presisi + auto-copy) · <b>🔒 tmux</b> ON = command tetap jalan walau browser ditutup.</div>
   </div>`, 'max-w-5xl');
   const DOT = { info: 'bg-amber-400', warn: 'bg-amber-400', ok: 'bg-emerald-400', err: 'bg-red-500' };
   const setState = (t, kind = 'info') => {
@@ -336,6 +337,64 @@ async function openTerminal(vmid, name) {
     };
     term.onSelectionChange(() => { /* seleksi siap; user tap Copy atau otomatis di secure ctx */ });
     $('#tm_copy').onclick = doCopy;
+
+    // ===== Mode Pilih Area (HP): tap awal → tap akhir → blok presisi lintas-baris → auto-copy =====
+    // Mengatasi double-tap xterm yang selalu memblok 1 baris penuh & tak bisa diatur.
+    let selMode = false, anchor = null;
+    const screen = document.getElementById('tm_screen');
+    // Konversi koordinat sentuh → (col,row) buffer, pakai ukuran sel render xterm
+    const toCell = (clientX, clientY) => {
+      const core = term._core;
+      const dims = core && core._renderService && core._renderService.dimensions;
+      const cw = dims && (dims.css ? dims.css.cell.width : dims.actualCellWidth);
+      const ch = dims && (dims.css ? dims.css.cell.height : dims.actualCellHeight);
+      if (!cw || !ch) return null;
+      const rect = screen.getBoundingClientRect();
+      const x = clientX - rect.left - 4, y = clientY - rect.top - 4; // padding 4px
+      let col = Math.max(0, Math.min(term.cols - 1, Math.floor(x / cw)));
+      let row = Math.max(0, Math.min(term.rows - 1, Math.floor(y / ch)));
+      return { col, row: row + term.buffer.active.viewportY };
+    };
+    const setSelMode = (on) => {
+      selMode = on; anchor = null;
+      const b = $('#tm_sel');
+      if (b) b.className = `px-2.5 py-1 rounded-lg ${on ? 'bg-amber-600' : 'bg-slate-800'} hover:bg-slate-700 text-xs`;
+      screen.style.cursor = on ? 'crosshair' : '';
+      if (on) { toast('Mode pilih: tap titik AWAL lalu tap titik AKHIR', 'info'); term.clearSelection(); }
+    };
+    $('#tm_sel').onclick = () => setSelMode(!selMode);
+    const onTapSelect = async (clientX, clientY) => {
+      const cell = toCell(clientX, clientY);
+      if (!cell) return;
+      if (!anchor) {
+        anchor = cell;
+        term.clearSelection();
+        toast('Titik awal ✓ — tap titik akhir', 'info');
+      } else {
+        // urutkan agar awal < akhir
+        let a = anchor, b = cell;
+        if (b.row < a.row || (b.row === a.row && b.col < a.col)) { const t = a; a = b; b = t; }
+        const len = (b.row - a.row) * term.cols + (b.col - a.col) + 1;
+        term.select(a.col, a.row, Math.max(1, len));
+        const sel = term.getSelection();
+        anchor = null;
+        setSelMode(false);
+        if (sel) { if (await copyText(sel)) toast('Tersalin ✓', 'ok'); else window.prompt('Tahan untuk menyalin:', sel); }
+        else toast('Tak ada teks di area itu', 'warn');
+      }
+    };
+    screen.addEventListener('touchstart', (e) => {
+      if (!selMode) return;
+      e.preventDefault(); e.stopPropagation();
+      const t = e.touches[0] || e.changedTouches[0];
+      if (t) onTapSelect(t.clientX, t.clientY);
+    }, { passive: false });
+    screen.addEventListener('mousedown', (e) => {
+      if (!selMode) return;
+      e.preventDefault(); e.stopPropagation();
+      onTapSelect(e.clientX, e.clientY);
+    });
+
     // Paste
     $('#tm_paste').onclick = async () => {
       let txt = '';

@@ -263,8 +263,15 @@ function renderGuests() {
 }
 
 // ---------- Aksi lifecycle ----------
+const ACTION_CONFIRM = {
+  shutdown: (id) => `Shutdown #${id}?\nGuest akan dimatikan secara graceful (OS diminta shutdown).`,
+  reboot: (id) => `Reboot #${id}?\nGuest akan dinyalakan ulang.`,
+  reset: (id) => `Reset paksa #${id}?\n⚠ Setara cabut listrik — tidak graceful, risiko data korup.`,
+  stop: (id) => `Stop paksa #${id}?\n⚠ Tidak graceful (hard power-off), risiko data belum tersimpan.`,
+};
 async function doAction(vmid, act) {
-  if (act === 'stop' && !confirm(`Stop paksa #${vmid}? (tidak graceful)`)) return;
+  const ask = ACTION_CONFIRM[act];
+  if (ask && !confirm(ask(vmid))) return;
   try {
     await api(`/guests/${vmid}/action/${act}`, { method: 'POST' });
     toast(`${act} #${vmid} dikirim`, 'ok');
@@ -609,7 +616,7 @@ function applyTheme(t) {
   if (t === 'green') document.documentElement.setAttribute('data-theme', 'green');
   else document.documentElement.removeAttribute('data-theme');
   const lbl = $('#mi_theme_label');
-  if (lbl) lbl.textContent = t === 'green' ? 'Tema: Hijau' : 'Tema: Orange';
+  if (lbl) lbl.textContent = t === 'green' ? 'Tema: Hijau Cerah' : 'Tema: Orange (Gelap)';
 }
 function initTheme() {
   applyTheme(localStorage.getItem('pve_dash_theme') || 'orange');

@@ -175,7 +175,7 @@ async function openMigrate(vmid, name, curNode) {
 
 // ---------- 5. VNC Console (noVNC via CDN) — VM & CT, responsif, bisa paste ----------
 async function openConsole(vmid, name) {
-  modal(`<div class="flex flex-col" style="height:82vh">
+  modal(`<div id="vnc_root" class="flex flex-col" style="height:82vh">
     <div class="flex items-center justify-between px-4 py-2.5 border-b border-slate-800 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
         <span class="text-emerald-400">🖥</span>
@@ -218,6 +218,35 @@ async function openConsole(vmid, name) {
     rfb.addEventListener('disconnect', (e) => setState(e.detail?.clean ? 'terputus' : 'gagal konek'));
     rfb.addEventListener('securityfailure', () => setState('auth gagal'));
     window._rfb = rfb;
+
+    // ===== Responsif terhadap soft-keyboard (visualViewport) =====
+    const root = document.getElementById('vnc_root');
+    const bg = document.getElementById('modalBg');
+    // Align modal ke atas & buang padding supaya bisa memenuhi ruang saat keyboard muncul
+    if (bg) { bg.classList.remove('items-center'); bg.classList.add('items-start'); bg.classList.remove('p-4'); bg.classList.add('p-0','sm:p-4'); }
+    const card = root && root.parentElement; // container max-w-5xl
+    if (card) { card.classList.remove('max-h-[90vh]'); }
+    const vv = window.visualViewport;
+    const fitToViewport = () => {
+      const h = vv ? vv.height : window.innerHeight;
+      root.style.height = Math.max(240, Math.round(h - (vv ? vv.offsetTop : 0) - 4)) + 'px';
+      // Paksa noVNC hitung ulang skala terhadap container baru
+      if (rfb) { try { rfb.scaleViewport = rfb.scaleViewport; } catch { /* */ } }
+    };
+    fitToViewport();
+    if (vv) { vv.addEventListener('resize', fitToViewport); vv.addEventListener('scroll', fitToViewport); }
+    else window.addEventListener('resize', fitToViewport);
+    // Bersihkan listener saat modal ditutup
+    const modalRoot = document.getElementById('modalRoot');
+    const mo = new MutationObserver(() => {
+      if (!document.getElementById('vnc_root')) {
+        if (vv) { vv.removeEventListener('resize', fitToViewport); vv.removeEventListener('scroll', fitToViewport); }
+        else window.removeEventListener('resize', fitToViewport);
+        try { rfb.disconnect(); } catch { /* */ }
+        mo.disconnect();
+      }
+    });
+    if (modalRoot) mo.observe(modalRoot, { childList: true, subtree: true });
 
     // Paste: ketikkan teks clipboard ke terminal (char-by-char via keyboard events)
     $('#vnc_paste').onclick = async () => {

@@ -322,28 +322,53 @@ async function openTerminal(vmid, name) {
 
     // ===== Copy handal (HP + HTTP): clipboard API → fallback textarea execCommand =====
     const copyText = async (txt) => {
+      if (!txt) return false;
       try {
         if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(txt); return true; }
       } catch { /* lanjut fallback */ }
+      // Fallback execCommand: textarea harus BENAR-BENAR fokusable & terseleksi (jangan opacity:0/display:none)
       try {
         const ta = document.createElement('textarea');
         ta.value = txt;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0';
-        ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+        ta.contentEditable = 'true'; ta.readOnly = false;
+        ta.style.position = 'fixed'; ta.style.left = '0'; ta.style.bottom = '0';
+        ta.style.width = '1px'; ta.style.height = '1px'; ta.style.padding = '0';
+        ta.style.border = 'none'; ta.style.outline = 'none'; ta.style.boxShadow = 'none';
+        ta.style.background = 'transparent'; ta.style.fontSize = '16px'; // cegah zoom iOS
         document.body.appendChild(ta);
-        ta.focus(); ta.select(); ta.setSelectionRange(0, txt.length); // iOS butuh range
+        // iOS: butuh Range + selection, bukan sekadar .select()
+        const isIOS = /iP(ad|hone|od)/.test(navigator.userAgent);
+        if (isIOS) {
+          const range = document.createRange(); range.selectNodeContents(ta);
+          const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+          ta.setSelectionRange(0, txt.length);
+        } else { ta.focus(); ta.select(); }
         const ok = document.execCommand('copy');
         document.body.removeChild(ta);
         if (ok) return true;
       } catch { /* */ }
       return false;
     };
+    // Overlay fallback pamungkas: tampilkan teks ter-seleksi, user long-press → Copy nativ browser
+    const showCopyFallback = (txt) => {
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px';
+      ov.innerHTML = `<div style="background:#0f172a;border:1px solid #334155;border-radius:12px;max-width:520px;width:100%;padding:16px">
+        <div style="font-size:13px;color:#cbd5e1;margin-bottom:8px">Tahan teks di bawah → <b>Copy</b> (clipboard otomatis diblokir browser di HTTP):</div>
+        <textarea readonly style="width:100%;height:160px;background:#020617;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:10px;font-family:ui-monospace,monospace;font-size:14px;-webkit-user-select:text;user-select:text"></textarea>
+        <div style="text-align:right;margin-top:10px"><button style="padding:8px 16px;border-radius:8px;background:#334155;color:#fff;font-size:13px">Tutup</button></div>
+      </div>`;
+      const ta = ov.querySelector('textarea'); ta.value = txt;
+      ov.querySelector('button').onclick = () => ov.remove();
+      ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+      document.body.appendChild(ov);
+      setTimeout(() => { ta.focus(); ta.select(); }, 50);
+    };
     const doCopy = async () => {
       const sel = term.getSelection();
       if (!sel) { toast('Seleksi teks di terminal dulu (tahan lalu geser)', 'warn'); return; }
       if (await copyText(sel)) toast('Tersalin ✓', 'ok');
-      else window.prompt('Tahan teks untuk menyalin:', sel);
+      else showCopyFallback(sel);
     };
     term.onSelectionChange(() => { /* seleksi siap; user tap Copy atau otomatis di secure ctx */ });
     $('#tm_copy').onclick = doCopy;
@@ -383,7 +408,7 @@ async function openTerminal(vmid, name) {
       if (!dragging) return; dragging = false;
       const sel = term.getSelection();
       setSelMode(false);
-      if (sel && sel.trim()) { if (await copyText(sel)) toast('Tersalin ✓', 'ok'); else window.prompt('Tahan untuk menyalin:', sel); }
+      if (sel && sel.trim()) { if (await copyText(sel)) toast('Tersalin ✓', 'ok'); else showCopyFallback(sel); }
       else toast('Tak ada teks — coba lagi', 'warn');
     };
     screen.addEventListener('touchstart', (e) => { if (!selMode) return; e.preventDefault(); const t = e.touches[0]; if (t) selStart(t.clientX, t.clientY); }, { passive: false });
@@ -429,8 +454,10 @@ async function openTerminal(vmid, name) {
     document.body.style.overflow = 'hidden';
     const relayout = () => {
       const h = vv ? vv.height : window.innerHeight; const top = vv ? vv.offsetTop : 0;
+      const wide = (vv ? vv.width : window.innerWidth) >= 640; // Tailwind sm
+      const pad = wide ? 16 : 0; // bg punya sm:p-4 (16px) di desktop
       if (bg) { bg.style.position = 'fixed'; bg.style.top = top + 'px'; bg.style.left = '0'; bg.style.right = '0'; bg.style.height = h + 'px'; bg.style.bottom = 'auto'; }
-      root.style.height = Math.max(220, Math.round(h - 4)) + 'px';
+      root.style.height = Math.max(220, Math.round(h - pad * 2 - 4)) + 'px';
       try { fit.fit(); if (ws && ws.readyState === WebSocket.OPEN) ws.send(`1:${term.cols}:${term.rows}:`); } catch { /* */ }
     };
     relayout();
